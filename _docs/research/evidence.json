@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "observedOn": "2026-10-22",
+  "timezone": "Asia/Shanghai",
+  "classification": "redacted-observation-summary",
+  "scope": [
+    "localhost",
+    "t-11257",
+    "nb-11257"
+  ],
+  "verdict": "partial-feasibility-full-gate-not-passed",
+  "limitations": [
+    "No raw database or transcript archived",
+    "Snapshots are mutable; counts are not expected to remain constant",
+    "No controlled live approval, native-read, crash or sustained polling test",
+    "All HTTP examples are synthetic; no backend implemented"
+  ],
+  "entries": [
+    {
+      "id": "E01",
+      "host": "localhost",
+      "kind": "version-and-log-inventory",
+      "installedCodexVersion": "0.163.0-alpha.11",
+      "cursorIdeVersion": "3.22.7",
+      "rolloutFileCount": 2,
+      "sourceFinding": "Desktop and subagent, not verified CLI",
+      "method": "Executable/package version plus JSONL metadata"
+    },
+    {
+      "id": "E02",
+      "host": "localhost",
+      "kind": "codex-sqlite-schema",
+      "path": "~/.codex/state_5.sqlite",
+      "mode": "read-only",
+      "tablesObserved": [
+        "threads",
+        "thread_read_receipts"
+      ],
+      "readReceiptFields": [
+        "thread_id",
+        "first_unread_turn",
+        "revision",
+        "last_published_turn"
+      ],
+      "limitation": "Schema presence does not verify native read semantics"
+    },
+    {
+      "id": "E03",
+      "host": "localhost",
+      "kind": "cursor-ide-storage",
+      "path": "%APPDATA%/Cursor/User/globalStorage/state.vscdb",
+      "bytes": 1035378688,
+      "composerHeaders": 287,
+      "latestSamples": 5,
+      "statusValues": [
+        "completed",
+        "aborted",
+        "none"
+      ],
+      "candidateFields": [
+        "hasBlockingPendingActions",
+        "hasUnreadMessages",
+        "lastReadAtMs",
+        "turnDurationMs"
+      ],
+      "indexedQueryMs": [
+        20.02,
+        6.33,
+        4.28,
+        3.53,
+        3.33
+      ],
+      "queryScope": "20 composers and at most last 3 bubble lengths each",
+      "limitation": "Not full transcript parsing or live state verification"
+    },
+    {
+      "id": "E04",
+      "host": "localhost",
+      "kind": "cursor-workspace-join",
+      "workspaceJsonCount": 53,
+      "headerJoinCounts": {
+        "file": 188,
+        "vscodeRemote": 22,
+        "unmatched": 77
+      },
+      "selectedRemoteComposerCounts": {
+        "nb-11257": 12,
+        "t-11257": 2
+      },
+      "method": "Join composerHeaders.workspaceId to workspaceStorage/<id>/workspace.json; decode remote authority"
+    },
+    {
+      "id": "E05",
+      "host": "t-11257",
+      "kind": "codex-cli-history",
+      "installedVersion": "0.163.0",
+      "sampleProducerVersion": "0.154.0",
+      "sampleSource": "cli",
+      "sampleOriginator": "codex-tui",
+      "rolloutFileCount": 666,
+      "sourceCounts": {
+        "cli": 38,
+        "exec": 5,
+        "vscode": 82,
+        "structuredSubagent": 541
+      },
+      "sampleFilenameSha256Prefix": "6dd899d2f0a2",
+      "sampleBytes": 17341388,
+      "eventCounts": {
+        "task_started": 15,
+        "task_complete": 14,
+        "turn_aborted": 1,
+        "item_completed": 1592
+      },
+      "latestStart": "2026-09-22T02:40:03.633Z",
+      "previousSuccess": "2026-09-22T02:31:00.142Z",
+      "latestAbort": "2026-09-22T03:32:43.268Z",
+      "terminalFields": [
+        "turn_id",
+        "last_agent_message",
+        "started_at",
+        "completed_at",
+        "duration_ms"
+      ],
+      "probeComputeSeconds": 1.639,
+      "limitation": "Historical snapshot; newest turn interrupted; current installed CLI version differs"
+    },
+    {
+      "id": "E06",
+      "host": "nb-11257",
+      "kind": "codex-source-and-git-worktrees",
+      "installedVersion": "0.158.0",
+      "rolloutFileCount": 3,
+      "source": "vscode",
+      "originator": "codex-tui",
+      "sampleFilenameSha256Prefix": "be66a35a5dcb",
+      "sampleBytes": 4142432,
+      "eventCounts": {
+        "task_started": 7,
+        "task_complete": 7
+      },
+      "existingWorktrees": 3,
+      "allCommonGitDirsEqual": true,
+      "method": "git rev-parse --path-format=absolute --git-common-dir in each existing worktree",
+      "limitation": "Not genuine CLI source proof; not cross-host origin-normalization proof"
+    },
+    {
+      "id": "E07",
+      "host": "nb-11257",
+      "kind": "cursor-ide-storage",
+      "path": "~/.config/Cursor/User/globalStorage/state.vscdb",
+      "bytes": 6690459648,
+      "composerHeaders": 2830,
+      "composerDataKeys": 3109,
+      "indexedQueryMs": [
+        192.07,
+        39.45,
+        37.07
+      ],
+      "composerValueLengthTotal": 979297,
+      "sshCommandWallSeconds": 3.689634,
+      "method": "Read-only transaction; SELECT composerId FROM composerHeaders ORDER BY lastUpdatedAt DESC LIMIT 20; exact-key length(value) query per composer; repeat 3 times",
+      "limitation": "No message body transfer; three runs inside one SSH connection; length is SQLite value length, not a transfer measurement"
+    },
+    {
+      "id": "E08",
+      "host": "t-11257",
+      "kind": "cursor-cli-storage",
+      "installedVersion": "2026.10.16-e3cb207",
+      "path": "~/.cursor/chats/<scope>/<session>/store.db",
+      "tables": [
+        "blobs",
+        "meta"
+      ],
+      "samples": [
+        {
+          "bytes": 1376256,
+          "blobCount": 179,
+          "jsonMessageRoles": {
+            "system": 1,
+            "user": 2,
+            "assistant": 13,
+            "tool": 49
+          },
+          "opaqueBlobCount": 114
+        },
+        {
+          "bytes": 69632,
+          "blobCount": 11,
+          "jsonMessageRoles": {
+            "system": 1,
+            "user": 2,
+            "assistant": 1
+          },
+          "opaqueBlobCount": 7
+        }
+      ],
+      "decodedMetaFields": [
+        "agentId",
+        "latestRootBlobId",
+        "name",
+        "mode",
+        "isRunEverything",
+        "createdAt",
+        "blobEncryptionKey"
+      ],
+      "limitation": "No secret values retained; graph ordering/latest-turn/final semantics unresolved"
+    },
+    {
+      "id": "E09",
+      "kind": "documentation-reference-not-runtime-proof",
+      "urls": [
+        "https://learn.chatgpt.com/docs/app-server",
+        "https://cursor.com/docs/cli/overview",
+        "https://cursor.com/docs/cli/headless",
+        "https://spec.openapis.org/oas/v3.1.1.html",
+        "https://www.sqlite.org/uri.html",
+        "https://www.sqlite.org/wal.html"
+      ]
+    },
+    {
+      "id": "E10",
+      "host": "nb-11257",
+      "kind": "cursor-cli-executable",
+      "installedVersion": "2026.05.04-08e5280",
+      "path": "~/.local/bin/cursor-agent",
+      "oldStyleChatsDirectoryFound": false,
+      "limitation": "Not in noninteractive PATH; missing one history path does not prove no history"
+    }
+  ]
+}

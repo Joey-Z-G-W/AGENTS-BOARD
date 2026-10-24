@@ -1,0 +1,2680 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Agents Board 本地只读监控 API",
+    "version": "0.3.0",
+    "description": "内存演示后端契约。8 个原业务接口已实现，新增密码登录和 Bearer 认证；示例与种子均为合成数据。没有真实 Agent/SSH 采集，内存状态与令牌重启清空。"
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "仅由本机同源服务提供；默认绑定 loopback，不是远端设备 API。"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Dashboard",
+      "description": "聚合快照与异步刷新。"
+    },
+    {
+      "name": "Sessions",
+      "description": "最新任务详情与应用内阅读标记。"
+    },
+    {
+      "name": "Hosts",
+      "description": "本地监控配置，不修改 SSH/远端配置。"
+    },
+    {
+      "name": "Auth",
+      "description": "单用户本地认证，不提供公开注册。"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "x-status": "implemented-in-memory-demo",
+  "x-evidence-document": "../research/evidence.json",
+  "x-security-requirements": [
+    "Bind only loopback by default",
+    "Validate Host and Origin; reject foreign browser origins and cross-site writes",
+    "No wildcard CORS; require application/json for JSON writes",
+    "Use subprocess argv, never interpolate user target into shell",
+    "Use existing known_hosts and never disable host-key verification",
+    "No credentials, raw transcripts or stack traces in error logs"
+  ],
+  "paths": {
+    "/dashboard": {
+      "get": {
+        "operationId": "getDashboard",
+        "tags": [
+          "Dashboard"
+        ],
+        "summary": "读取最近聚合快照",
+        "description": "不阻塞等待所有 SSH 扫描。部分主机失败仍返回 200、缓存与 warnings。按实际活动滚动 7 天过滤；Read 且已证明完成超过 24 小时才隐藏。没有可靠活动时间的降级策略见 README；本草案保留并警告。",
+        "responses": {
+          "200": {
+            "description": "成功；可为空或为部分结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                },
+                "example": {
+                  "projects": [
+                    {
+                      "id": "project-demo",
+                      "name": "演示项目",
+                      "repository": null,
+                      "identityKind": "host_directory",
+                      "activityAt": "2026-10-22T08:02:00Z",
+                      "sessions": [
+                        {
+                          "id": "session-demo",
+                          "turnId": "turn-demo-2",
+                          "turnIdentityKind": "native",
+                          "projectId": "project-demo",
+                          "hostId": "host-demo",
+                          "storageHostId": "host-demo",
+                          "source": "codex_cli",
+                          "title": "演示任务（合成数据）",
+                          "status": "unread",
+                          "freshness": "fresh",
+                          "activityAt": "2026-10-22T08:02:00Z",
+                          "startedAt": "2026-10-22T08:00:00Z",
+                          "completedAt": "2026-10-22T08:02:00Z",
+                          "durationSeconds": 120,
+                          "directory": "/workspace/demo",
+                          "branch": "main",
+                          "worktree": null,
+                          "prompt": "这是用于接口校验的合成指令。",
+                          "response": "这是用于接口校验的合成最终回复。",
+                          "reason": null,
+                          "evidence": {
+                            "level": "observed",
+                            "basis": "native_task_event",
+                            "observedAt": "2026-10-22T08:02:05Z",
+                            "sourceVersion": "example-only",
+                            "reason": null
+                          },
+                          "capabilities": {
+                            "latestTurn": "verified",
+                            "waiting": "unavailable",
+                            "finalResponse": "verified",
+                            "nativeRead": "unavailable",
+                            "exactCompletionTime": "verified"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "sampledAt": "2026-10-22T08:02:06Z",
+                  "warnings": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求来源或 Host 不符合本地服务安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "请求来源或 Host 不符合本地服务安全策略。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；不返回堆栈、原始会话或凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误；不返回堆栈、原始会话或凭据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "服务端产生的稳定、不透明标识；客户端按路径段编码，不解析其组成。"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSession",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "读取某会话最新任务",
+        "description": "只读查询，不隐式 markRead；无完整历史接口。",
+        "responses": {
+          "200": {
+            "description": "最新快照。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                },
+                "example": {
+                  "id": "session-demo",
+                  "turnId": "turn-demo-2",
+                  "turnIdentityKind": "native",
+                  "projectId": "project-demo",
+                  "hostId": "host-demo",
+                  "storageHostId": "host-demo",
+                  "source": "codex_cli",
+                  "title": "演示任务（合成数据）",
+                  "status": "unread",
+                  "freshness": "fresh",
+                  "activityAt": "2026-10-22T08:02:00Z",
+                  "startedAt": "2026-10-22T08:00:00Z",
+                  "completedAt": "2026-10-22T08:02:00Z",
+                  "durationSeconds": 120,
+                  "directory": "/workspace/demo",
+                  "branch": "main",
+                  "worktree": null,
+                  "prompt": "这是用于接口校验的合成指令。",
+                  "response": "这是用于接口校验的合成最终回复。",
+                  "reason": null,
+                  "evidence": {
+                    "level": "observed",
+                    "basis": "native_task_event",
+                    "observedAt": "2026-10-22T08:02:05Z",
+                    "sourceVersion": "example-only",
+                    "reason": null
+                  },
+                  "capabilities": {
+                    "latestTurn": "verified",
+                    "waiting": "unavailable",
+                    "finalResponse": "verified",
+                    "nativeRead": "unavailable",
+                    "exactCompletionTime": "verified"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求来源或 Host 不符合本地服务安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "请求来源或 Host 不符合本地服务安全策略。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "会话不存在或已移除。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "会话不存在或已移除。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；不返回堆栈、原始会话或凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误；不返回堆栈、原始会话或凭据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/read": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "服务端产生的稳定、不透明标识；客户端按路径段编码，不解析其组成。"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "markRead",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "将指定最新完成任务标为已读",
+        "description": "仅写应用本地标记，不写原生工具数据库。与快照最新 turnId 原子比较；必须 fresh 且状态 read/unread。同一 turnId 重复请求幂等。冲突后客户端重新获取详情，不自动把新轮标已读。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkReadRequest"
+              },
+              "example": {
+                "turnId": "turn-demo-2"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已读后的最新会话。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                },
+                "example": {
+                  "id": "session-demo",
+                  "turnId": "turn-demo-2",
+                  "turnIdentityKind": "native",
+                  "projectId": "project-demo",
+                  "hostId": "host-demo",
+                  "storageHostId": "host-demo",
+                  "source": "codex_cli",
+                  "title": "演示任务（合成数据）",
+                  "status": "read",
+                  "freshness": "fresh",
+                  "activityAt": "2026-10-22T08:02:00Z",
+                  "startedAt": "2026-10-22T08:00:00Z",
+                  "completedAt": "2026-10-22T08:02:00Z",
+                  "durationSeconds": 120,
+                  "directory": "/workspace/demo",
+                  "branch": "main",
+                  "worktree": null,
+                  "prompt": "这是用于接口校验的合成指令。",
+                  "response": "这是用于接口校验的合成最终回复。",
+                  "reason": null,
+                  "evidence": {
+                    "level": "observed",
+                    "basis": "web_read",
+                    "observedAt": "2026-10-22T08:02:05Z",
+                    "sourceVersion": "example-only",
+                    "reason": null
+                  },
+                  "capabilities": {
+                    "latestTurn": "verified",
+                    "waiting": "unavailable",
+                    "finalResponse": "verified",
+                    "nativeRead": "unavailable",
+                    "exactCompletionTime": "verified"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INVALID_REQUEST",
+                  "message": "请求体无效。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求来源或 Host 不符合本地服务安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "请求来源或 Host 不符合本地服务安全策略。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "会话不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "会话不存在。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "TURN_CHANGED / TURN_ID_UNAVAILABLE / NOT_COMPLETED / SNAPSHOT_STALE；不修改标记。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "TURN_CHANGED": {
+                    "value": {
+                      "code": "TURN_CHANGED",
+                      "message": "无法将此任务标为已读，请刷新详情。"
+                    }
+                  },
+                  "TURN_ID_UNAVAILABLE": {
+                    "value": {
+                      "code": "TURN_ID_UNAVAILABLE",
+                      "message": "无法将此任务标为已读，请刷新详情。"
+                    }
+                  },
+                  "NOT_COMPLETED": {
+                    "value": {
+                      "code": "NOT_COMPLETED",
+                      "message": "无法将此任务标为已读，请刷新详情。"
+                    }
+                  },
+                  "SNAPSHOT_STALE": {
+                    "value": {
+                      "code": "SNAPSHOT_STALE",
+                      "message": "无法将此任务标为已读，请刷新详情。"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；不返回堆栈、原始会话或凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误；不返回堆栈、原始会话或凭据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hosts": {
+      "get": {
+        "operationId": "getHosts",
+        "tags": [
+          "Hosts"
+        ],
+        "summary": "读取主机配置与 SSH 候选",
+        "description": "候选来自现有本机 SSH 配置；不返回 IdentityFile 内容或任何密钥。",
+        "responses": {
+          "200": {
+            "description": "主机及候选列表。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostSettings"
+                },
+                "example": {
+                  "hosts": [
+                    {
+                      "id": "host-demo",
+                      "name": "演示主机",
+                      "address": "demo-host",
+                      "local": false,
+                      "enabled": true,
+                      "connection": "online",
+                      "lastSuccessAt": "2026-10-22T08:02:05Z",
+                      "error": null
+                    }
+                  ],
+                  "candidates": [
+                    {
+                      "alias": "demo-host",
+                      "address": "demo-host"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求来源或 Host 不符合本地服务安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "请求来源或 Host 不符合本地服务安全策略。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；不返回堆栈、原始会话或凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误；不返回堆栈、原始会话或凭据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "addHost",
+        "tags": [
+          "Hosts"
+        ],
+        "summary": "添加监控目标",
+        "description": "只保存本地监控配置，默认启用并异步采集；返回成功不表示 SSH 已连接。不改写 ~/.ssh/config，不接受密码或 shell 命令。重复目标返回 409。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddHostRequest"
+              },
+              "example": {
+                "target": "demo-host"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已创建，初始连接状态 unknown。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Host"
+                },
+                "example": {
+                  "id": "host-demo",
+                  "name": "演示主机",
+                  "address": "demo-host",
+                  "local": false,
+                  "enabled": true,
+                  "connection": "unknown",
+                  "lastSuccessAt": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "目标格式无效或请求体错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INVALID_TARGET",
+                  "message": "目标格式无效或请求体错误。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求来源或 Host 不符合本地服务安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "请求来源或 Host 不符合本地服务安全策略。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "监控目标已存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "HOST_EXISTS",
+                  "message": "监控目标已存在。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；不返回堆栈、原始会话或凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误；不返回堆栈、原始会话或凭据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hosts/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "服务端产生的稳定、不透明标识；客户端按路径段编码，不解析其组成。"
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "setHostEnabled",
+        "tags": [
+          "Hosts"
+        ],
+        "summary": "启用或停用远端采集",
+        "description": "修改本地配置。停用保留缓存并设 stale，在线状态是最后连接结果；local 主机不能停用。启用异步排队采集。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateHostRequest"
+              },
+              "example": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "更新完成，无响应体。"
+          },
+          "400": {
+            "description": "请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INVALID_REQUEST",
+                  "message": "请求体无效。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求来源或 Host 不符合本地服务安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "请求来源或 Host 不符合本地服务安全策略。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "主机不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "主机不存在。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "本地主机受保护，不能停用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "LOCAL_HOST_PROTECTED",
+                  "message": "本地主机受保护，不能停用。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；不返回堆栈、原始会话或凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误；不返回堆栈、原始会话或凭据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeHost",
+        "tags": [
+          "Hosts"
+        ],
+        "summary": "移除远端监控目标",
+        "description": "仅移除应用中的配置和该存储主机的会话缓存/阅读标记；不删除远端文件、不修改 SSH 配置。其他存储主机的会话不会因工作区位于此设备而被删除。删除不存在 ID 返回 404。",
+        "responses": {
+          "204": {
+            "description": "删除完成，无响应体。"
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求来源或 Host 不符合本地服务安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "请求来源或 Host 不符合本地服务安全策略。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "主机不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "主机不存在。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "本地主机不能删除。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "LOCAL_HOST_PROTECTED",
+                  "message": "本地主机不能删除。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；不返回堆栈、原始会话或凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误；不返回堆栈、原始会话或凭据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/refresh": {
+      "post": {
+        "operationId": "refresh",
+        "tags": [
+          "Dashboard"
+        ],
+        "summary": "请求异步刷新已启用主机",
+        "description": "204 只表示刷新请求已入队或与现有扫描合并，不表示扫描完成。每主机最多一个扫描，不排积重复手动请求。前端继续轮询 dashboard/hosts；sampledAt 只代表聚合生成时间，lastSuccessAt 才表明该主机采集成功。",
+        "responses": {
+          "204": {
+            "description": "已接受或合并刷新，无响应体。"
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求来源或 Host 不符合本地服务安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "请求来源或 Host 不符合本地服务安全策略。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；不返回堆栈、原始会话或凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误；不返回堆栈、原始会话或凭据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "login",
+        "tags": [
+          "Auth"
+        ],
+        "security": [],
+        "summary": "用户名密码登录",
+        "description": "账号由启动环境变量配置，无公开注册。单 IP 每分钟最多 5 次登录请求，全局最多 2 个并发密码校验。错误用户名与错误密码返回同一错误；密码使用加盐 scrypt。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功；Cache-Control: no-store。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_CREDENTIALS：用户名或密码错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN_ORIGIN：Host/Origin 或跨站请求不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR：内部错误，不返回敏感细节。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "撤销当前 Bearer 令牌",
+        "responses": {
+          "204": {
+            "description": "令牌已撤销，无正文。"
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED：令牌缺失、无效、过期或已撤销；WWW-Authenticate: Bearer。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN_ORIGIN：Host/Origin 或跨站请求不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR：内部错误，不返回敏感细节。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "security": [],
+        "summary": "公开存活检查，不暴露会话数据",
+        "responses": {
+          "200": {
+            "description": "服务可用；mode 明确标识演示后端。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN_ORIGIN：Host/Origin 或跨站请求不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR：内部错误，不返回敏感细节。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "security": [],
+        "summary": "读取当前 OpenAPI 契约",
+        "responses": {
+          "200": {
+            "description": "当前契约，无私密运行时数据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST：请求参数、JSON 或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN_ORIGIN：Host/Origin 或跨站请求不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "INVALID_REQUEST：请求体超过 16 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "INVALID_REQUEST：只接受 application/json 请求体。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED：请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR：内部错误，不返回敏感细节。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Evidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "level",
+          "basis",
+          "observedAt",
+          "sourceVersion",
+          "reason"
+        ],
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "observed",
+              "inferred",
+              "unavailable"
+            ]
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "native_task_event",
+              "composer_status",
+              "web_read",
+              "initial_import",
+              "unsupported",
+              "conflicting"
+            ]
+          },
+          "observedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最近成功读取该依据的时间；不是任务时间。",
+            "format": "date-time"
+          },
+          "sourceVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "产生此记录的工具版本，不是当前安装版本。"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "脱敏的人类可读说明；不包含原始消息或凭据。"
+          }
+        },
+        "examples": [
+          {
+            "level": "observed",
+            "basis": "native_task_event",
+            "observedAt": "2026-10-22T08:02:05Z",
+            "sourceVersion": "example-only",
+            "reason": null
+          }
+        ]
+      },
+      "Capabilities": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "latestTurn",
+          "waiting",
+          "finalResponse",
+          "nativeRead",
+          "exactCompletionTime"
+        ],
+        "properties": {
+          "latestTurn": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "candidate",
+              "unavailable"
+            ]
+          },
+          "waiting": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "candidate",
+              "unavailable"
+            ]
+          },
+          "finalResponse": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "candidate",
+              "unavailable"
+            ]
+          },
+          "nativeRead": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "candidate",
+              "unavailable"
+            ]
+          },
+          "exactCompletionTime": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "candidate",
+              "unavailable"
+            ]
+          }
+        },
+        "examples": [
+          {
+            "latestTurn": "verified",
+            "waiting": "unavailable",
+            "finalResponse": "verified",
+            "nativeRead": "unavailable",
+            "exactCompletionTime": "verified"
+          }
+        ]
+      },
+      "Session": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "turnId",
+          "turnIdentityKind",
+          "projectId",
+          "hostId",
+          "storageHostId",
+          "source",
+          "title",
+          "status",
+          "freshness",
+          "activityAt",
+          "startedAt",
+          "completedAt",
+          "durationSeconds",
+          "directory",
+          "branch",
+          "worktree",
+          "prompt",
+          "response",
+          "reason",
+          "evidence",
+          "capabilities"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "服务端产生的稳定、不透明标识；客户端按路径段编码，不解析其组成。"
+          },
+          "turnId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最新任务稳定身份；可为经过验证的原生 ID 或用户轮锚点派生 ID。无法确定时 null。",
+            "minLength": 1
+          },
+          "turnIdentityKind": {
+            "type": "string",
+            "enum": [
+              "native",
+              "derived",
+              "unavailable"
+            ]
+          },
+          "projectId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "服务端产生的稳定、不透明标识；客户端按路径段编码，不解析其组成。"
+          },
+          "hostId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "执行工作区所属主机；无法可靠关联时 null。"
+          },
+          "storageHostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "实际读取日志/数据库的主机。可能与执行主机不同（Remote SSH）。"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "codex_cli",
+              "cursor_cli",
+              "cursor_ide"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "脱敏显示标题；缺失时可用明确的无标题占位，不能伪装成原生提示词。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "unread",
+              "running",
+              "read",
+              "unknown"
+            ]
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale"
+            ]
+          },
+          "activityAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最近可靠 Agent 执行活动；不是文件 mtime、IDE recency 或 Web 阅读时间。",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最新任务开始时间。",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最新任务明确成功完成时间；无法证明或中断时 null。",
+            "format": "date-time"
+          },
+          "durationSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "最新任务可靠耗时，秒；来源无依据时 null。",
+            "minimum": 0
+          },
+          "directory": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "执行工作目录；工作区未能解析时 null。"
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "已解析 Git 分支；未解析/非 Git 时 null。"
+          },
+          "worktree": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "已解析 worktree 路径；未知时 null。"
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最新轮用户指令；无法证明轮次时 null。"
+          },
+          "response": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最新轮明确最终回复；不返回思考或工具中间消息来填充。"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Unknown/stale/字段缺失的可理解原因。"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          }
+        },
+        "description": "一张原生会话卡，仅最新任务。中断/失败不映射为成功 Unread；冻结状态集合下用 Unknown 加原因。stale 表示最后样本，不证明当前 Running。",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "turnIdentityKind": {
+                  "const": "unavailable"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "turnId": {
+                  "type": "null"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "turnId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "unknown"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "freshness": {
+                  "const": "stale"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        ],
+        "examples": [
+          {
+            "id": "session-demo",
+            "turnId": "turn-demo-2",
+            "turnIdentityKind": "native",
+            "projectId": "project-demo",
+            "hostId": "host-demo",
+            "storageHostId": "host-demo",
+            "source": "codex_cli",
+            "title": "演示任务（合成数据）",
+            "status": "unread",
+            "freshness": "fresh",
+            "activityAt": "2026-10-22T08:02:00Z",
+            "startedAt": "2026-10-22T08:00:00Z",
+            "completedAt": "2026-10-22T08:02:00Z",
+            "durationSeconds": 120,
+            "directory": "/workspace/demo",
+            "branch": "main",
+            "worktree": null,
+            "prompt": "这是用于接口校验的合成指令。",
+            "response": "这是用于接口校验的合成最终回复。",
+            "reason": null,
+            "evidence": {
+              "level": "observed",
+              "basis": "native_task_event",
+              "observedAt": "2026-10-22T08:02:05Z",
+              "sourceVersion": "example-only",
+              "reason": null
+            },
+            "capabilities": {
+              "latestTurn": "verified",
+              "waiting": "unavailable",
+              "finalResponse": "verified",
+              "nativeRead": "unavailable",
+              "exactCompletionTime": "verified"
+            }
+          },
+          {
+            "id": "session-unknown",
+            "turnId": null,
+            "turnIdentityKind": "unavailable",
+            "projectId": "project-demo",
+            "hostId": null,
+            "storageHostId": "host-demo",
+            "source": "cursor_cli",
+            "title": "尚未解析的会话（合成数据）",
+            "status": "unknown",
+            "freshness": "stale",
+            "activityAt": null,
+            "startedAt": null,
+            "completedAt": null,
+            "durationSeconds": null,
+            "directory": null,
+            "branch": null,
+            "worktree": null,
+            "prompt": null,
+            "response": null,
+            "reason": "无法证明最新任务顺序；保留上次采集结果。",
+            "evidence": {
+              "level": "unavailable",
+              "basis": "unsupported",
+              "observedAt": "2026-10-22T08:01:00Z",
+              "sourceVersion": null,
+              "reason": "此示例不表示该来源已经受支持。"
+            },
+            "capabilities": {
+              "latestTurn": "unavailable",
+              "waiting": "unavailable",
+              "finalResponse": "unavailable",
+              "nativeRead": "unavailable",
+              "exactCompletionTime": "unavailable"
+            }
+          },
+          {
+            "id": "session-demo",
+            "turnId": "turn-demo-2",
+            "turnIdentityKind": "native",
+            "projectId": "project-demo",
+            "hostId": "host-demo",
+            "storageHostId": "host-demo",
+            "source": "codex_cli",
+            "title": "演示任务（合成数据）",
+            "status": "read",
+            "freshness": "fresh",
+            "activityAt": "2026-10-22T08:02:00Z",
+            "startedAt": "2026-10-22T08:00:00Z",
+            "completedAt": "2026-10-22T08:02:00Z",
+            "durationSeconds": 120,
+            "directory": "/workspace/demo",
+            "branch": "main",
+            "worktree": null,
+            "prompt": "这是用于接口校验的合成指令。",
+            "response": "这是用于接口校验的合成最终回复。",
+            "reason": null,
+            "evidence": {
+              "level": "observed",
+              "basis": "web_read",
+              "observedAt": "2026-10-22T08:02:05Z",
+              "sourceVersion": "example-only",
+              "reason": null
+            },
+            "capabilities": {
+              "latestTurn": "verified",
+              "waiting": "unavailable",
+              "finalResponse": "verified",
+              "nativeRead": "unavailable",
+              "exactCompletionTime": "verified"
+            }
+          }
+        ]
+      },
+      "Project": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "repository",
+          "identityKind",
+          "activityAt",
+          "sessions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "服务端产生的稳定、不透明标识；客户端按路径段编码，不解析其组成。"
+          },
+          "name": {
+            "type": "string",
+            "description": "可读项目名。"
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "去除凭据后的已归一化仓库标识；非 Git 或无法证明时 null。"
+          },
+          "identityKind": {
+            "type": "string",
+            "enum": [
+              "git_remote",
+              "git_common_dir",
+              "host_directory",
+              "unresolved"
+            ]
+          },
+          "activityAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "该项目可证明的最近 Agent 活动时间。",
+            "format": "date-time"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          }
+        },
+        "description": "仅可靠匹配才跨主机合并；无 remote 使用主机命名空间 common dir/工作目录。不根据同名目录猜测仓库。",
+        "examples": [
+          {
+            "id": "project-demo",
+            "name": "演示项目",
+            "repository": null,
+            "identityKind": "host_directory",
+            "activityAt": "2026-10-22T08:02:00Z",
+            "sessions": [
+              {
+                "id": "session-demo",
+                "turnId": "turn-demo-2",
+                "turnIdentityKind": "native",
+                "projectId": "project-demo",
+                "hostId": "host-demo",
+                "storageHostId": "host-demo",
+                "source": "codex_cli",
+                "title": "演示任务（合成数据）",
+                "status": "unread",
+                "freshness": "fresh",
+                "activityAt": "2026-10-22T08:02:00Z",
+                "startedAt": "2026-10-22T08:00:00Z",
+                "completedAt": "2026-10-22T08:02:00Z",
+                "durationSeconds": 120,
+                "directory": "/workspace/demo",
+                "branch": "main",
+                "worktree": null,
+                "prompt": "这是用于接口校验的合成指令。",
+                "response": "这是用于接口校验的合成最终回复。",
+                "reason": null,
+                "evidence": {
+                  "level": "observed",
+                  "basis": "native_task_event",
+                  "observedAt": "2026-10-22T08:02:05Z",
+                  "sourceVersion": "example-only",
+                  "reason": null
+                },
+                "capabilities": {
+                  "latestTurn": "verified",
+                  "waiting": "unavailable",
+                  "finalResponse": "verified",
+                  "nativeRead": "unavailable",
+                  "exactCompletionTime": "verified"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "Warning": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "hostId",
+          "source",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "PARTIAL_COLLECTION",
+              "SOURCE_UNSUPPORTED",
+              "TIME_UNVERIFIED",
+              "WORKSPACE_UNRESOLVED"
+            ]
+          },
+          "hostId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "相关存储主机；全局警告为 null。"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "codex_cli",
+              "cursor_cli",
+              "cursor_ide",
+              null
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "脱敏采集限制说明。"
+          }
+        },
+        "examples": [
+          {
+            "code": "SOURCE_UNSUPPORTED",
+            "hostId": "host-demo",
+            "source": "cursor_cli",
+            "message": "最新任务顺序未获验证。"
+          }
+        ]
+      },
+      "Dashboard": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projects",
+          "sampledAt",
+          "warnings"
+        ],
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          },
+          "sampledAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "生成本地聚合快照的时间；不表示所有主机同时采集成功。"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            }
+          }
+        },
+        "examples": [
+          {
+            "projects": [
+              {
+                "id": "project-demo",
+                "name": "演示项目",
+                "repository": null,
+                "identityKind": "host_directory",
+                "activityAt": "2026-10-22T08:02:00Z",
+                "sessions": [
+                  {
+                    "id": "session-demo",
+                    "turnId": "turn-demo-2",
+                    "turnIdentityKind": "native",
+                    "projectId": "project-demo",
+                    "hostId": "host-demo",
+                    "storageHostId": "host-demo",
+                    "source": "codex_cli",
+                    "title": "演示任务（合成数据）",
+                    "status": "unread",
+                    "freshness": "fresh",
+                    "activityAt": "2026-10-22T08:02:00Z",
+                    "startedAt": "2026-10-22T08:00:00Z",
+                    "completedAt": "2026-10-22T08:02:00Z",
+                    "durationSeconds": 120,
+                    "directory": "/workspace/demo",
+                    "branch": "main",
+                    "worktree": null,
+                    "prompt": "这是用于接口校验的合成指令。",
+                    "response": "这是用于接口校验的合成最终回复。",
+                    "reason": null,
+                    "evidence": {
+                      "level": "observed",
+                      "basis": "native_task_event",
+                      "observedAt": "2026-10-22T08:02:05Z",
+                      "sourceVersion": "example-only",
+                      "reason": null
+                    },
+                    "capabilities": {
+                      "latestTurn": "verified",
+                      "waiting": "unavailable",
+                      "finalResponse": "verified",
+                      "nativeRead": "unavailable",
+                      "exactCompletionTime": "verified"
+                    }
+                  }
+                ]
+              }
+            ],
+            "sampledAt": "2026-10-22T08:02:06Z",
+            "warnings": []
+          }
+        ]
+      },
+      "Host": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "address",
+          "local",
+          "enabled",
+          "connection",
+          "lastSuccessAt",
+          "error"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "服务端产生的稳定、不透明标识；客户端按路径段编码，不解析其组成。"
+          },
+          "name": {
+            "type": "string",
+            "description": "显示名称。"
+          },
+          "address": {
+            "type": "string",
+            "description": "本地主机标识或已选择 SSH alias/目标；不得携带密码、私钥或代理命令。"
+          },
+          "local": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "connection": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline",
+              "unknown"
+            ]
+          },
+          "lastSuccessAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "该主机最近一次成功采集完成时间；尚未成功为 null。",
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "脱敏连接/采集错误，不返回原始 SSH stderr 中的敏感内容。"
+          }
+        },
+        "examples": [
+          {
+            "id": "host-demo",
+            "name": "演示主机",
+            "address": "demo-host",
+            "local": false,
+            "enabled": true,
+            "connection": "online",
+            "lastSuccessAt": "2026-10-22T08:02:05Z",
+            "error": null
+          }
+        ]
+      },
+      "SshCandidate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "alias",
+          "address"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string",
+            "minLength": 1
+          },
+          "address": {
+            "type": "string",
+            "description": "供显示的目标，不包含 SSH 身份密钥内容。"
+          }
+        },
+        "examples": [
+          {
+            "alias": "demo-host",
+            "address": "demo-host"
+          }
+        ]
+      },
+      "HostSettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hosts",
+          "candidates"
+        ],
+        "properties": {
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Host"
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SshCandidate"
+            }
+          }
+        },
+        "examples": [
+          {
+            "hosts": [
+              {
+                "id": "host-demo",
+                "name": "演示主机",
+                "address": "demo-host",
+                "local": false,
+                "enabled": true,
+                "connection": "online",
+                "lastSuccessAt": "2026-10-22T08:02:05Z",
+                "error": null
+              }
+            ],
+            "candidates": [
+              {
+                "alias": "demo-host",
+                "address": "demo-host"
+              }
+            ]
+          }
+        ]
+      },
+      "MarkReadRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "turnId"
+        ],
+        "properties": {
+          "turnId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "服务端产生的稳定、不透明标识；客户端按路径段编码，不解析其组成。"
+          }
+        },
+        "examples": [
+          {
+            "turnId": "turn-demo-2"
+          }
+        ]
+      },
+      "AddHostRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target"
+        ],
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "现有 SSH alias 或经严格校验的 [user@]hostname/IP。禁止选项、控制字符、空白和 shell 语法；不能直接拼接进命令。"
+          }
+        },
+        "examples": [
+          {
+            "target": "demo-host"
+          }
+        ]
+      },
+      "UpdateHostRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "examples": [
+          {
+            "enabled": false
+          }
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_REQUEST",
+              "FORBIDDEN_ORIGIN",
+              "NOT_FOUND",
+              "TURN_CHANGED",
+              "TURN_ID_UNAVAILABLE",
+              "NOT_COMPLETED",
+              "SNAPSHOT_STALE",
+              "HOST_EXISTS",
+              "LOCAL_HOST_PROTECTED",
+              "INVALID_TARGET",
+              "SERVICE_UNAVAILABLE",
+              "INTERNAL_ERROR",
+              "UNAUTHORIZED",
+              "INVALID_CREDENTIALS",
+              "RATE_LIMITED"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "供用户阅读的中文错误；客户端使用 code 分支，不解析 message。"
+          }
+        },
+        "examples": [
+          {
+            "code": "TURN_CHANGED",
+            "message": "任务已更新，请重新读取详情。"
+          }
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "writeOnly": true
+          }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresAt"
+        ],
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "tokenType": {
+            "type": "string",
+            "const": "Bearer"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "mode"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "mode": {
+            "type": "string",
+            "const": "in-memory-demo"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "description": "登录获取的 256-bit 随机令牌，默认一小时过期；服务端只保存摘要，logout 撤销，重启失效。"
+      }
+    }
+  }
+}
