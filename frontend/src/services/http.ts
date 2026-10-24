@@ -1,35 +1,17 @@
-import { ServiceError, type BoardService, type Dashboard, type Host, type HostSettings, type Session } from './types';
+import * as api from './generated/board';
+import type { BoardService } from './types';
 
 export function createHttpService(baseUrl = '/api'): BoardService {
-  const base = baseUrl.replace(/\/$/, '');
-  async function request<Result>(path: string, method = 'GET', body?: unknown): Promise<Result> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-    try {
-      const response = await fetch(`${base}${path}`, {
-        method, signal: controller.signal, credentials: 'same-origin',
-        headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => null) as { message?: string; code?: string } | null;
-        throw new ServiceError(error?.message ?? `请求失败（${response.status}）`, error?.code ?? String(response.status));
-      }
-      return response.status === 204 ? undefined as Result : await response.json() as Result;
-    } catch (error) {
-      if (error instanceof ServiceError) throw error;
-      throw new ServiceError(controller.signal.aborted ? '服务响应超时，请重试。' : '无法连接后端服务，请检查服务是否已启动。', 'NETWORK');
-    } finally { clearTimeout(timeout); }
-  }
+  const options = { baseUrl };
   return {
     mode: 'http',
-    getDashboard: () => request<Dashboard>('/dashboard'),
-    getSession: (id) => request<Session>(`/sessions/${encodeURIComponent(id)}`),
-    markRead: (id, turnId) => request<Session>(`/sessions/${encodeURIComponent(id)}/read`, 'POST', { turnId }),
-    getHosts: () => request<HostSettings>('/hosts'),
-    addHost: (target) => request<Host>('/hosts', 'POST', { target }),
-    setHostEnabled: (id, enabled) => request<void>(`/hosts/${encodeURIComponent(id)}`, 'PATCH', { enabled }),
-    removeHost: (id) => request<void>(`/hosts/${encodeURIComponent(id)}`, 'DELETE'),
-    refresh: () => request<void>('/refresh', 'POST'),
+    getDashboard: (signal) => api.getDashboard({ ...options, signal }),
+    getSession: (id, signal) => api.getSession(id, { ...options, signal }),
+    markRead: (id, turnId) => api.markRead(id, { turnId }, options),
+    getHosts: (signal) => api.getHosts({ ...options, signal }),
+    addHost: (target) => api.addHost({ target }, options),
+    setHostEnabled: (id, enabled) => api.setHostEnabled(id, { enabled }, options),
+    removeHost: (id) => api.removeHost(id, options),
+    refresh: () => api.refresh(options),
   };
 }

@@ -47,13 +47,13 @@ export async function buildApp(options: AppOptions) {
     if (!publicRoutes.has(route)) options.auth.authenticate(request.headers.authorization);
   });
 
-  await app.register(rateLimit, { max: 120, timeWindow: '1 minute', errorResponseBuilder: () => ({ code: 'RATE_LIMITED', message: '请求过多，请稍后重试。' }) });
+  await app.register(rateLimit, { max: 120, timeWindow: '1 minute', errorResponseBuilder: () => new ApiError(429, 'RATE_LIMITED', '请求过多，请稍后重试。') });
   app.addHook('preValidation', async request => {
     if (request.body !== undefined && !/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] ?? '')) {
       throw new ApiError(415, 'INVALID_REQUEST', '请求体必须为 application/json。');
     }
   });
-  app.get('/api/health', async () => ({ status: 'ok', mode: 'in-memory-demo' }));
+  app.get('/api/health', async () => ({ status: 'ok', mode: store.mode }));
   app.get('/api/openapi.json', async () => contract);
   authRoutes(app, options.auth);
   boardRoutes(app, store);

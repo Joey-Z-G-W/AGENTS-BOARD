@@ -58,10 +58,10 @@ describe('Mock service: read persistence and concurrency', () => {
   it('persists a read marker across service instances without changing agent activity', async () => {
     const service = createMockService({ storage: localStorage, now: () => NOW });
     const before = await service.getSession('board-ui');
-    await service.markRead(before.id, before.turnId);
+    await service.markRead(before.id, before.turnId!);
     const restored = createMockService({ storage: localStorage, now: () => NOW });
     expect(await restored.getSession(before.id)).toMatchObject({ status: 'read', activityAt: before.activityAt, completedAt: before.completedAt });
-    await expect(restored.markRead(before.id, before.turnId)).resolves.toMatchObject({ status: 'read' });
+    await expect(restored.markRead(before.id, before.turnId!)).resolves.toMatchObject({ status: 'read' });
   });
 
   it('rejects an obsolete task read marker without consuming the new unread task', async () => {

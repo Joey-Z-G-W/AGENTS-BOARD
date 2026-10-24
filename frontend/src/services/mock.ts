@@ -63,17 +63,18 @@ export function createMockService(options: MockOptions = {}): BoardService {
       }
       const enabled = new Set(state.hosts.filter((host) => host.enabled).map((host) => host.id));
       const projects = state.projects.map((project) => {
-        const allSessions = state.sessions.filter((session) => session.projectId === project.id && enabled.has(session.hostId));
-        const activity = Math.max(...allSessions.map((session) => Date.parse(session.activityAt)));
+        const allSessions = state.sessions.filter((session) => session.projectId === project.id && session.hostId !== null && enabled.has(session.hostId));
+        const activity = Math.max(...allSessions.map((session) => session.activityAt ? Date.parse(session.activityAt) : -Infinity));
         return {
           ...project,
+          identityKind: 'git_remote' as const,
           activityAt: Number.isFinite(activity) ? new Date(activity).toISOString() : new Date(0).toISOString(),
           sessions: allSessions.filter((session) => !(session.status === 'read' && session.completedAt && now() - Date.parse(session.completedAt) > 24 * HOUR))
-            .map(withFreshness).sort((left, right) => priority[left.status] - priority[right.status] || Date.parse(right.activityAt) - Date.parse(left.activityAt)),
+            .map(withFreshness).sort((left, right) => priority[left.status] - priority[right.status] || Date.parse(right.activityAt ?? '') - Date.parse(left.activityAt ?? '')),
         };
       }).filter((project) => now() - Date.parse(project.activityAt) <= 7 * 24 * HOUR)
         .sort((left, right) => Date.parse(right.activityAt) - Date.parse(left.activityAt));
-      return structuredClone({ projects, sampledAt: state.sampledAt });
+      return structuredClone({ projects, sampledAt: state.sampledAt, warnings: [] });
     },
     async getSession(id) {
       await pause();

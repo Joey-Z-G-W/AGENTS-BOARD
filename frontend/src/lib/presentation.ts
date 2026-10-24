@@ -6,7 +6,8 @@ export const statusLabels: Record<SessionStatus, string> = {
 
 export const sourceLabels = { codex_cli: 'Codex CLI', cursor_cli: 'Cursor CLI', cursor_ide: 'Cursor IDE' };
 
-export function relativeTime(value: string, now = Date.now()) {
+export function relativeTime(value: string | null, now = Date.now()) {
+  if (!value || !Number.isFinite(Date.parse(value))) return '时间未知';
   const minutes = Math.max(0, Math.floor((now - Date.parse(value)) / 60_000));
   if (minutes < 1) return '刚刚';
   if (minutes < 60) return `${minutes} 分钟前`;

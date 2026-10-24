@@ -12,11 +12,13 @@ export interface MockState {
 export function createSeed(now = Date.now()): MockState {
   const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
   const session = (overrides: Partial<Session> & Pick<Session, 'id' | 'title'>): Session => ({
-    turnId: `${overrides.id}-turn-1`, projectId: 'board', hostId: 'local',
+    turnId: `${overrides.id}-turn-1`, turnIdentityKind: 'native', projectId: 'board', hostId: 'local', storageHostId: overrides.hostId ?? 'local',
     source: 'codex_cli', status: 'running', freshness: 'fresh', activityAt: ago(1),
     startedAt: ago(12), completedAt: null, durationSeconds: null,
     directory: 'C:/Users/Joey/code/AGENTS-BOARD', branch: 'feat/dashboard', worktree: null,
     prompt: '请实现项目看板，并验证相关交互。保持每个原生会话只显示最新任务。',
+    evidence: { level: 'observed', basis: 'native_task_event', observedAt: ago(0), sourceVersion: 'synthetic-mock', reason: '仅为合成演示，不代表已验证真实来源能力。' },
+    capabilities: { latestTurn: 'verified', waiting: 'verified', finalResponse: 'verified', nativeRead: 'unavailable', exactCompletionTime: 'verified' },
     response: null, reason: null, ...overrides,
   });
   return {

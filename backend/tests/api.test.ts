@@ -33,7 +33,15 @@ describe('HTTP contract and security', () => {
     expect(validateModel('Health', health.json())).toBe(true);
     const spec = await app.inject('/api/openapi.json');
     expect(spec.json().security).toEqual([{ bearerAuth: [] }]);
-    expect(Object.values(contract.paths).flatMap((path: unknown) => Object.values(path as object)).filter((operation: any) => operation.operationId)).toHaveLength(12);
+    const operations = Object.values(contract.paths).flatMap((path: unknown) => Object.values(path as object)).filter((operation: any) => operation.operationId);
+    expect(operations).toHaveLength(14);
+    expect(operations.map((operation: any) => operation.operationId)).toEqual(expect.arrayContaining(['requestSessionRefresh', 'getRefresh']));
+  });
+
+  it('does not claim the legacy backend implements the new continuous refresh protocol', async () => {
+    for (const [method, url] of [['POST', '/api/sessions/demo-unread/refresh'], ['GET', '/api/refreshes/synthetic-job']] as const) {
+      expect((await app.inject({ method, url, headers: { authorization } })).statusCode).toBe(404);
+    }
   });
 
   it('validates actual dashboard, sessions and hosts against OpenAPI schemas', async () => {

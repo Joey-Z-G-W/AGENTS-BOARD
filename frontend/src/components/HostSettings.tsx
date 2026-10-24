@@ -16,21 +16,21 @@ export function HostSettings({ settings, service, busy, run }: {
   };
   return <div className="settings-layout">
     <section className="settings-panel"><div className="panel-title"><h2>监控主机</h2><span>{settings.hosts.length} 台主机</span></div>
-      <p className="muted">自动监控本机，通过现有 SSH 配置读取远端会话。</p>
+      <p className="muted">配置监控主机。当前演示后端不执行真实 SSH；请以看板能力提示为准。</p>
       <div className="host-list">{settings.hosts.map((host) => <article className="host-card" key={host.id}>
         <div className={`host-icon ${host.connection === 'offline' ? 'offline' : ''}`}>{host.local ? <Laptop size={22} /> : <Server size={22} />}</div>
         <div className="host-information"><h3>{host.name}{host.local && <span className="neutral-badge">自动监控</span>}</h3><p className="mono">{host.address}</p>
           <span className="host-last">最近成功采集：{dateTime(host.lastSuccessAt)}</span>
           {host.error && <p className="host-error"><WifiOff size={13} />{host.error}</p>}
         </div>
-        <span className={`connection-label ${!host.enabled ? 'disabled' : host.connection}`}><span className="status-dot" />{!host.enabled ? '已暂停' : host.connection === 'online' ? '在线' : '离线'}</span>
+        <span className={`connection-label ${!host.enabled ? 'disabled' : host.connection}`}><span className="status-dot" />{!host.enabled ? '已暂停' : host.connection === 'online' ? '在线' : host.connection === 'unknown' ? '待验证' : '离线'}</span>
         {!host.local && <div className="host-actions"><button className="small-button" disabled={busy} onClick={() => void run(() => service.setHostEnabled(host.id, !host.enabled))} aria-label={`${host.enabled ? '暂停' : '启用'} ${host.name}`}>{host.enabled ? '暂停' : '启用'}</button><button className="icon-button danger" disabled={busy} aria-label={`移除 ${host.name}`} onClick={() => void run(() => service.removeHost(host.id))}><Trash2 size={16} /></button></div>}
       </article>)}</div>
     </section>
     <div className="settings-side"><section className="settings-panel"><div className="panel-title"><h2>添加 SSH 主机</h2><Plus size={18} /></div>
       <form onSubmit={(event) => void add(event)}><label htmlFor="host-target">SSH 别名或地址</label><input id="host-target" value={target} onChange={(event) => setTarget(event.target.value)} placeholder="例如 staging 或 joey@host" required maxLength={128} autoComplete="off" /><button className="primary-button full-width" disabled={busy || !target.trim()}><Plus size={16} />添加到监控</button></form>
       {feedback && <p className="success-message" role="status"><Check size={15} />{feedback}</p>}
-      <div className="candidate-list"><span className="eyebrow">{service.mode === 'mock' ? '示例 SSH 配置' : '来自 ~/.ssh/config'}</span>{settings.candidates.map((candidate) => {
+      <div className="candidate-list"><span className="eyebrow">{service.mode === 'mock' ? '示例 SSH 配置' : '可选主机（来源见数据提示）'}</span>{settings.candidates.map((candidate) => {
         const exists = settings.hosts.some((host) => host.name === candidate.alias || host.address === candidate.address);
         return <button key={candidate.alias} disabled={exists || busy} onClick={() => setTarget(candidate.alias)}><Server size={14} /><span>{candidate.alias}</span>{exists ? <Check size={14} /> : <Plus size={14} />}</button>;
       })}{settings.candidates.length === 0 && <p className="muted">没有可导入的 SSH 别名，可以手动添加。</p>}</div>

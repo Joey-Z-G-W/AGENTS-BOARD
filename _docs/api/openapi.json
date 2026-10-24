@@ -2,8 +2,8 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Agents Board 本地只读监控 API",
-    "version": "0.3.0",
-    "description": "内存演示后端契约。8 个原业务接口已实现，新增密码登录和 Bearer 认证；示例与种子均为合成数据。没有真实 Agent/SSH 采集，内存状态与令牌重启清空。"
+    "version": "0.4.0",
+    "description": "增量契约：已有 in-memory-demo 与 real-snapshot 内存模式；新增 continuous 持续采集及会话刷新协议待 Go 后端实现，不表示当前服务已支持。旧 snapshot 仍仅启动采集一次且 refresh 不重采。continuous 在后台服务存活且宿主机未休眠时调度只读采集，打开会话另请求定向刷新；不可证明的状态保持 unknown，正文及采集状态默认仅存内存。"
   },
   "servers": [
     {
@@ -34,7 +34,7 @@
       "bearerAuth": []
     }
   ],
-  "x-status": "implemented-in-memory-demo",
+  "x-status": "demo-and-snapshot-implemented-continuous-planned",
   "x-evidence-document": "../research/evidence.json",
   "x-security-requirements": [
     "Bind only loopback by default",
@@ -380,6 +380,390 @@
                 "example": {
                   "code": "SERVICE_UNAVAILABLE",
                   "message": "本地存储/聚合服务不可用。单个 SSH 主机离线不使用此错误。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/refresh": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      ],
+      "post": {
+        "operationId": "requestSessionRefresh",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "接受指定会话的真实刷新作业（持续模式）",
+        "description": "新增协议，须实现后才能启用。无请求体，继承 Bearer 认证及 Host/Origin 策略；服务端从会话映射 storageHostId/来源/路径，客户端不能提供命令或路径。同一用户、同一会话已有 queued/running 作业时返回相同 ID；终态后再次请求建立新作业。202 只表示接受，不表示成功。与后台扫描复用执行槽，只有在入队后确实读取目标来源并提交才能 succeeded，不得将已有缓存或仅主机连接成功算作完成；运行中重复请求合并到原作业，不保证每次点击都单独读取。不会标已读。",
+        "responses": {
+          "202": {
+            "description": "已接受或合并；轮询 Location，随后 GET 会话详情。",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "相对资源地址 /api/refreshes/{id}。"
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "建议轮询间隔秒数，默认 1；前端遵守退避。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshJob"
+                },
+                "example": {
+                  "id": "refresh-synthetic-1",
+                  "sessionId": "session-demo",
+                  "status": "queued",
+                  "requestedAt": "2026-10-24T02:30:00Z",
+                  "startedAt": null,
+                  "finishedAt": null,
+                  "expiresAt": null,
+                  "collectionVersion": null,
+                  "error": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求标识或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INVALID_REQUEST",
+                  "message": "请求标识或请求体无效。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "令牌缺失、无效、过期或已撤销。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "UNAUTHORIZED",
+                  "message": "令牌缺失、无效、过期或已撤销。"
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer"
+              }
+            }
+          },
+          "403": {
+            "description": "Host 或 Origin 不符合本地安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "Host 或 Origin 不符合本地安全策略。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标不存在或已失效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "目标不存在或已失效。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "会话存储主机已停用，不启动采集。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "HOST_DISABLED",
+                  "message": "会话存储主机已停用，不启动采集。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "请求体超过限制。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INVALID_REQUEST",
+                  "message": "请求体超过限制。"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "不支持的请求媒体类型。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INVALID_REQUEST",
+                  "message": "不支持的请求媒体类型。"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "RATE_LIMITED",
+                  "message": "请求过多，请稍后重试。"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误，未返回原始诊断数据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误，未返回原始诊断数据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂不可用，或当前运行模式不支持真实定向刷新。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "服务暂不可用，或当前运行模式不支持真实定向刷新。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/refreshes/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getRefresh",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "查询会话刷新作业",
+        "description": "只读查询，继承 Bearer 认证。只有发起用户可查询；非所属用户与未知、到期、重启失效 ID 均返回 404。作业终态保留十分钟，GET 不延长存活时间。failed 是成功读取作业状态的 HTTP 200，错误在 error 字段；不是 GET 请求自身的 5xx。禁止查询接口重新采集或标已读。",
+        "responses": {
+          "200": {
+            "description": "当前作业状态；成功后 collectionVersion 对应已提交快照。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshJob"
+                },
+                "examples": {
+                  "succeeded": {
+                    "summary": "合成成功作业",
+                    "value": {
+                      "id": "refresh-synthetic-1",
+                      "sessionId": "session-demo",
+                      "status": "succeeded",
+                      "requestedAt": "2026-10-24T02:30:00Z",
+                      "startedAt": "2026-10-24T02:30:01Z",
+                      "finishedAt": "2026-10-24T02:30:02Z",
+                      "expiresAt": "2026-10-24T02:40:02Z",
+                      "collectionVersion": {
+                        "epoch": "synthetic-boot-1",
+                        "sequence": 2
+                      },
+                      "error": null
+                    }
+                  },
+                  "failed": {
+                    "summary": "合成失败作业（保留旧快照）",
+                    "value": {
+                      "id": "refresh-synthetic-1",
+                      "sessionId": "session-demo",
+                      "status": "failed",
+                      "requestedAt": "2026-10-24T02:30:00Z",
+                      "startedAt": "2026-10-24T02:30:01Z",
+                      "finishedAt": "2026-10-24T02:30:02Z",
+                      "expiresAt": "2026-10-24T02:40:02Z",
+                      "collectionVersion": null,
+                      "error": {
+                        "code": "REFRESH_FAILED",
+                        "message": "无法读取会话数据，已保留上次结果。"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求标识或请求体无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INVALID_REQUEST",
+                  "message": "请求标识或请求体无效。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "令牌缺失、无效、过期或已撤销。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "UNAUTHORIZED",
+                  "message": "令牌缺失、无效、过期或已撤销。"
+                }
+              }
+            },
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer"
+              }
+            }
+          },
+          "403": {
+            "description": "Host 或 Origin 不符合本地安全策略。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN_ORIGIN",
+                  "message": "Host 或 Origin 不符合本地安全策略。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标不存在或已失效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "目标不存在或已失效。"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过多，请稍后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "RATE_LIMITED",
+                  "message": "请求过多，请稍后重试。"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误，未返回原始诊断数据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "内部错误，未返回原始诊断数据。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂不可用，或当前运行模式不支持真实定向刷新。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SERVICE_UNAVAILABLE",
+                  "message": "服务暂不可用，或当前运行模式不支持真实定向刷新。"
                 }
               }
             }
@@ -1783,6 +2167,276 @@
           }
         ]
       },
+      "CollectionVersion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "epoch",
+          "sequence"
+        ],
+        "properties": {
+          "epoch": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "进程启动生成的不透明命名空间；不同 epoch 的 sequence 不可比较。"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "同一 epoch 内成功采集提交的递增序号；只在同一会话中比较。"
+          }
+        }
+      },
+      "RefreshJob": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sessionId",
+          "status",
+          "requestedAt",
+          "startedAt",
+          "finishedAt",
+          "expiresAt",
+          "collectionVersion",
+          "error"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "终态保留十分钟，到期后 GET 返回 404；排队/运行中为 null。重启、删除主机也会使作业失效。"
+          },
+          "collectionVersion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionVersion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仅 succeeded 非 null，表示该作业已原子提交的目标会话版本，不是排队时缓存版本。"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仅 failed 非 null；仅脱敏错误，不得包含命令、路径、原始 stderr、正文或凭据。"
+          }
+        },
+        "description": "持续模式待实现协议，不是当前服务已支持的声明。queued -> running -> succeeded/failed；queued 也可因停用等变为 failed。GET 查询不延长 TTL、不触发采集、不标已读。",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "succeeded"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "collectionVersion": {
+                  "$ref": "#/components/schemas/CollectionVersion"
+                },
+                "error": {
+                  "type": "null"
+                },
+                "startedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "collectionVersion": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "failed"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "error": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "error": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "succeeded",
+                    "failed"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "finishedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "finishedAt": {
+                  "type": "null"
+                },
+                "expiresAt": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "queued"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "startedAt": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "running"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "startedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        ],
+        "examples": [
+          {
+            "id": "refresh-synthetic-1",
+            "sessionId": "session-demo",
+            "status": "queued",
+            "requestedAt": "2026-10-24T02:30:00Z",
+            "startedAt": null,
+            "finishedAt": null,
+            "expiresAt": null,
+            "collectionVersion": null,
+            "error": null
+          },
+          {
+            "id": "refresh-synthetic-1",
+            "sessionId": "session-demo",
+            "status": "succeeded",
+            "requestedAt": "2026-10-24T02:30:00Z",
+            "startedAt": "2026-10-24T02:30:01Z",
+            "finishedAt": "2026-10-24T02:30:02Z",
+            "expiresAt": "2026-10-24T02:40:02Z",
+            "collectionVersion": {
+              "epoch": "synthetic-boot-1",
+              "sequence": 2
+            },
+            "error": null
+          },
+          {
+            "id": "refresh-synthetic-1",
+            "sessionId": "session-demo",
+            "status": "failed",
+            "requestedAt": "2026-10-24T02:30:00Z",
+            "startedAt": "2026-10-24T02:30:01Z",
+            "finishedAt": "2026-10-24T02:30:02Z",
+            "expiresAt": "2026-10-24T02:40:02Z",
+            "collectionVersion": null,
+            "error": {
+              "code": "REFRESH_FAILED",
+              "message": "无法读取会话数据，已保留上次结果。"
+            }
+          }
+        ]
+      },
       "Session": {
         "type": "object",
         "additionalProperties": false,
@@ -1960,6 +2614,15 @@
           },
           "capabilities": {
             "$ref": "#/components/schemas/Capabilities"
+          },
+          "collectionVersion": {
+            "$ref": "#/components/schemas/CollectionVersion",
+            "description": "continuous 成功读取并提交的版本；后台扫描与定向刷新均更新，失败、GET、markRead 不更新。旧模式可省略；同会话同 epoch 比较 sequence，不同 epoch 丢弃旧比较基线。"
+          },
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "此会话最近成功读取并提交的 UTC 时间；与 collectionVersion 成对出现，失败保留旧值，不等于聚合 sampledAt 或 Agent 活动时间。旧模式可省略。"
           }
         },
         "description": "一张原生会话卡，仅最新任务。中断/失败不映射为成功 Unread；冻结状态集合下用 Unknown 加原因。stale 表示最后样本，不证明当前 Running。",
@@ -2590,7 +3253,9 @@
               "INTERNAL_ERROR",
               "UNAUTHORIZED",
               "INVALID_CREDENTIALS",
-              "RATE_LIMITED"
+              "RATE_LIMITED",
+              "HOST_DISABLED",
+              "REFRESH_FAILED"
             ]
           },
           "message": {
@@ -2663,7 +3328,8 @@
           },
           "mode": {
             "type": "string",
-            "const": "in-memory-demo"
+            "enum": ["in-memory-demo", "real-snapshot", "continuous"],
+            "description": "continuous 仅在真实持续采集已经启动后使用；协议允许该值不代表旧后端支持。"
           }
         }
       }

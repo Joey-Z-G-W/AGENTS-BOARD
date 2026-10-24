@@ -5,6 +5,17 @@ import { createSeed } from '../services/seed';
 import { SessionDetail } from './SessionDetail';
 
 describe('Session detail task changes', () => {
+  it.each([{ turnId: null, freshness: 'fresh' }, { turnId: 'known-turn', freshness: 'stale' }])('does not mark missing or stale turn identities read: %j', async overrides => {
+    const seed = createSeed();
+    const service = createMockService({ initialState: seed });
+    service.getSession = vi.fn().mockResolvedValue({ ...seed.sessions[1], ...overrides, hostId: null, storageHostId: 'local', directory: null, prompt: null, activityAt: null });
+    service.markRead = vi.fn();
+    render(<SessionDetail id="board-ui" service={service} hosts={seed.hosts} onClose={vi.fn()} onRead={vi.fn()} stale={false} />);
+    expect(await screen.findByText(/执行主机未知/)).toBeInTheDocument();
+    expect(screen.getByText('暂无可用指令')).toBeInTheDocument();
+    expect(service.markRead).not.toHaveBeenCalled();
+  });
+
   it('replaces an open task when polling discovers a newer turn in the same session', async () => {
     const seed = createSeed();
     const service = createMockService({ initialState: seed });

@@ -16,8 +16,8 @@ export class AuthService {
   ) {}
 
   static async create(username: string, password: string, now = Date.now, tokenTtlMs = 3600000) {
-    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(username) || password.length < 12 || password.length > 256) {
-      throw new Error('BOARD_USERNAME 必须是 1–64 位安全字符，BOARD_PASSWORD 必须是 12–256 位。');
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(username) || (password !== 'admin' && password.length < 12) || password.length > 256) {
+      throw new Error('BOARD_USERNAME 必须是 1–64 位安全字符；除本机预览默认密码 admin 外，BOARD_PASSWORD 必须是 12–256 位。');
     }
     return new AuthService(username, await hashPassword(password), now, tokenTtlMs);
   }

@@ -10,13 +10,14 @@ const timestamp = (value: string | null) => value === null ? -Infinity : Date.pa
 const syntheticWarning: Warning = { code: 'PARTIAL_COLLECTION', hostId: null, source: null, message: '内存演示后端：数据为合成样本，刷新不执行真实 Agent 采集或 SSH；重启会重置。' };
 
 export function normalizeTarget(target: string): string {
+  if (/[\s\x00-\x1f\x7f]/.test(target)) throw new ApiError(400, 'INVALID_TARGET', '目标不能包含空白或控制字符。');
   const parts = target.split('@');
   if (parts.length > 2 || (parts.length === 2 && !/^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/.test(parts[0]))) {
     throw new ApiError(400, 'INVALID_TARGET', '请输入有效 SSH 别名或 user@host。');
   }
   const hostname = parts.at(-1)!;
   const unbracketed = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
-  const domainValid = hostname.split('.').every(label => /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(label));
+  const domainValid = hostname.split('.').every(label => /^[a-zA-Z0-9_](?:[a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])?$/.test(label));
   if (!target || target.length > 255 || (!isIP(unbracketed) && !domainValid)) {
     throw new ApiError(400, 'INVALID_TARGET', '目标不能包含选项、端口、空白或 shell 语法。');
   }
@@ -28,10 +29,12 @@ export class MemoryStore {
   private pending: ReturnType<typeof setTimeout> | undefined;
   private readonly demoOnlineHosts: Set<string>;
 
-  constructor(private readonly now = Date.now, seed = createSeed(now())) {
+  constructor(private readonly now = Date.now, seed = createSeed(now()), private readonly snapshotOptions?: { collectedAt: string; warnings: Warning[] }) {
     this.state = structuredClone(seed);
     this.demoOnlineHosts = new Set(seed.hosts.filter(host => host.connection === 'online').map(host => host.id));
   }
+
+  get mode(): 'in-memory-demo' | 'real-snapshot' { return this.snapshotOptions ? 'real-snapshot' : 'in-memory-demo'; }
 
   private host(id: string) {
     const host = this.state.hosts.find(entry => entry.id === id);
@@ -48,7 +51,10 @@ export class MemoryStore {
   private snapshot(session: Session): Session {
     const host = this.state.hosts.find(entry => entry.id === session.storageHostId);
     const stale = !host?.enabled || host.connection !== 'online' || !host.lastSuccessAt || this.now() - timestamp(host.lastSuccessAt) > 45000;
-    return structuredClone({ ...session, freshness: stale ? 'stale' : session.freshness, reason: stale ? '存储主机不可用、停用或采集过期；仅显示最后样本。' : session.reason });
+    const reason = stale && this.snapshotOptions
+      ? '单次采集快照，未持续监控；不能据此判断主机目前是否离线。' + (session.reason ?? '')
+      : stale ? '存储主机不可用、停用或采集过期；仅显示最后样本。' : session.reason;
+    return structuredClone({ ...session, freshness: stale ? 'stale' : session.freshness, reason });
   }
 
   getSession(id: string) { return this.snapshot(this.session(id)); }
@@ -59,23 +65,23 @@ export class MemoryStore {
       if (!allSessions.length) return [];
       const activity = Math.max(...allSessions.map(session => timestamp(session.activityAt)));
       const unknownTime = allSessions.some(session => session.activityAt === null);
-      if (!unknownTime && this.now() - activity > 7 * 24 * HOUR) return [];
+      if (!this.snapshotOptions && !unknownTime && this.now() - activity > 7 * 24 * HOUR) return [];
       return [{
         ...project,
         activityAt: Number.isFinite(activity) ? new Date(activity).toISOString() : null,
-        sessions: allSessions.filter(session => !(session.status === 'read' && session.completedAt && this.now() - timestamp(session.completedAt) > 24 * HOUR))
+        sessions: allSessions.filter(session => this.snapshotOptions || !(session.status === 'read' && session.completedAt && this.now() - timestamp(session.completedAt) > 24 * HOUR))
           .map(session => this.snapshot(session))
           .sort((left, right) => priority[left.status] - priority[right.status] || timestamp(right.activityAt) - timestamp(left.activityAt)),
       }];
     }).sort((left, right) => timestamp(right.activityAt) - timestamp(left.activityAt));
-    const warnings: Warning[] = [syntheticWarning];
+    const warnings: Warning[] = this.snapshotOptions ? [...this.snapshotOptions.warnings] : [syntheticWarning];
     for (const host of this.state.hosts) {
       if (host.enabled && host.connection !== 'online') warnings.push({ code: 'PARTIAL_COLLECTION', hostId: host.id, source: null, message: host.error ?? '尚无成功采集。' });
     }
     if (this.state.sessions.some(session => session.activityAt === null)) {
       warnings.push({ code: 'TIME_UNVERIFIED', hostId: null, source: null, message: '部分任务无可靠活动时间，保守保留，不伪造 7 天过滤依据。' });
     }
-    return structuredClone({ projects, warnings, sampledAt: new Date(this.now()).toISOString() });
+    return structuredClone({ projects, warnings, sampledAt: this.snapshotOptions?.collectedAt ?? new Date(this.now()).toISOString() });
   }
 
   markRead(id: string, turnId: string) {
@@ -92,6 +98,7 @@ export class MemoryStore {
   getHosts() { return structuredClone({ hosts: this.state.hosts, candidates: this.state.candidates }); }
 
   addHost(target: string): Host {
+    if (this.snapshotOptions) throw new ApiError(400, 'INVALID_REQUEST', '单次快照预览不修改采集范围。');
     const address = normalizeTarget(target);
     if (this.state.hosts.some(host => normalizeTarget(host.address) === address) || ['localhost', '127.0.0.1', '::1'].includes(address.split('@').at(-1)!)) {
       throw new ApiError(409, 'HOST_EXISTS', '监控目标已存在。');
@@ -103,6 +110,7 @@ export class MemoryStore {
   }
 
   setHostEnabled(id: string, enabled: boolean) {
+    if (this.snapshotOptions) throw new ApiError(400, 'INVALID_REQUEST', '单次快照预览不修改采集范围。');
     const host = this.host(id);
     if (host.local && !enabled) throw new ApiError(409, 'LOCAL_HOST_PROTECTED', '本机不能停用。');
     host.enabled = enabled;
@@ -110,6 +118,7 @@ export class MemoryStore {
   }
 
   removeHost(id: string) {
+    if (this.snapshotOptions) throw new ApiError(400, 'INVALID_REQUEST', '单次快照预览不修改采集范围。');
     if (this.host(id).local) throw new ApiError(409, 'LOCAL_HOST_PROTECTED', '本机不能删除。');
     this.state.hosts = this.state.hosts.filter(host => host.id !== id);
     this.state.sessions = this.state.sessions.filter(session => session.storageHostId !== id)
@@ -118,6 +127,7 @@ export class MemoryStore {
   }
 
   requestRefresh() {
+    if (this.snapshotOptions) return;
     if (this.pending) return;
     this.pending = setTimeout(() => {
       this.pending = undefined;

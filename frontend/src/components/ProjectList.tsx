@@ -18,7 +18,7 @@ export function ProjectList({ projects, hosts, onOpen }: { projects: Project[]; 
     return <section className="project-panel" key={project.id} aria-label={project.name}>
       <button className="project-heading" aria-expanded={!isCollapsed} aria-controls={`project-${project.id}`} onClick={() => toggle(project.id)}>
         <span className={`project-symbol ${project.id === 'gateway' ? 'blue' : project.id === 'design' ? 'purple' : ''}`}><FolderGit2 size={22} /></span>
-        <span className="project-title"><strong>{project.name}</strong><span className="mono">{project.repository}</span></span>
+        <span className="project-title"><strong>{project.name}</strong><span className="mono">{project.repository ?? '未确认 Git 仓库'}</span></span>
         <span className="project-counts">
           {countCurrent(project.sessions, 'waiting') > 0 && <span className="mini-count waiting">{countCurrent(project.sessions, 'waiting')} 等待</span>}
           {countCurrent(project.sessions, 'unread') > 0 && <span className="mini-count unread">{countCurrent(project.sessions, 'unread')} 未读</span>}
@@ -47,7 +47,7 @@ function SessionRow({ session, host, onOpen }: { session: Session; host?: Host; 
       {session.reason && <span className="session-reason">{session.reason}</span>}
     </span>
     <span className="session-status"><StatusBadge session={session} />{session.freshness === 'stale' && <small><WifiOff size={11} />{host?.connection === 'offline' ? '主机离线' : '数据已过期'}</small>}</span>
-    <span className="session-host">{host?.local ? <Monitor size={13} /> : <Server size={13} />}{host?.name ?? session.hostId}</span>
+    <span className="session-host">{host?.local ? <Monitor size={13} /> : <Server size={13} />}{host?.name ?? session.hostId ?? '主机未知'}</span>
     <span className="session-time">{relativeTime(session.activityAt)}</span><ChevronRight size={15} className="row-arrow" />
   </button>;
 }

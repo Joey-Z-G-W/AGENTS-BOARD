@@ -103,12 +103,13 @@ describe('memory store', () => {
     expect(makeStore().getSession('demo-unread').status).toBe('unread');
   });
 
-  it.each(['-oProxyCommand=anything', 'host;whoami', 'host name', 'user@@host', 'host:22', 'a\nb', 'a/b', 'host$(cmd)', 'host&&cmd'])('rejects unsafe SSH target %s', target => {
+  it.each(['-oProxyCommand=anything', 'host;whoami', 'host name', 'user@@host', 'host:22', 'a\nb', 'host\n', 'a/b', 'host$(cmd)', 'host&&cmd'])('rejects unsafe SSH target %s', target => {
     expect(() => normalizeTarget(target)).toThrow();
   });
 
   it('normalizes safe targets and rejects duplicates without touching SSH', () => {
     expect(normalizeTarget('User@HOST.example')).toBe('User@host.example');
+    expect(normalizeTarget('dev_server')).toBe('dev_server');
     expect(normalizeTarget('[::1]')).toBe('::1');
     const store = makeStore();
     store.addHost('new-host');

@@ -23,6 +23,13 @@ describe('passwords and bearer tokens', () => {
     await expect(AuthService.create('admin', 'short')).rejects.toThrow();
   });
 
+  it('accepts the explicitly requested local preview default admin password', async () => {
+    const preview = await AuthService.create('admin', 'admin');
+    const result = await preview.login('admin', 'admin');
+    expect(preview.authenticate('Bearer ' + result.accessToken)).toBe(result.accessToken);
+    await expect(preview.login('admin', 'wrong')).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+  });
+
   it('uses identical credential failures for unknown user and wrong password', async () => {
     await expect(auth.login('other', password)).rejects.toMatchObject({ statusCode: 401, code: 'INVALID_CREDENTIALS' });
     await expect(auth.login('admin', 'bad')).rejects.toMatchObject({ statusCode: 401, code: 'INVALID_CREDENTIALS' });

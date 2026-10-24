@@ -324,3 +324,7 @@ h1 { font-size: 29px; line-height: 1.4; letter-spacing: -1px; font-weight: 650; 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+.login-layout { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login-panel { width: min(440px, 100%); }
+.login-panel form { display: grid; gap: 12px; }
+.auth-bar { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 8px 24px; background: #edf5ef; font-size: 13px; }
