@@ -1,6 +1,6 @@
 # Agents Board · Frontend
 
-独立的 React + TypeScript + Vite 前端，默认使用持久化 Mock，无需后端或 SSH 环境。界面与模拟规则遵循 `../_docs/plan.md`；根据本次要求先完成前端，真实数据源 PoC 尚未执行，不能将示例状态视为来源能力验证。
+独立的 React + TypeScript + Vite 前端，默认使用持久化 Mock，无需后端或 SSH 环境。也可登录 `../backend` 的内存演示服务；真实来源 PoC 仅部分通过，不能将种子状态视为真实采集能力验证。
 
 ## 运行
 
@@ -20,7 +20,7 @@ npm run build
 npm run preview
 ```
 
-Node.js 22.3+ 或受当前依赖支持的较新 LTS 版本。提交的 `package-lock.json` 锁定依赖；开发用 Vite，构建结果位于 `dist`。静态部署时使用站点根路径，不需要 SSR。
+Node.js 22.18+（本批使用 24.19 验证，Orval 不支持旧的 22.3）。提交的 `package-lock.json` 锁定依赖；开发用 Vite，构建结果位于 `dist`。静态部署时使用站点根路径，不需要 SSR。
 
 ## 已实现
 
@@ -34,26 +34,36 @@ Node.js 22.3+ 或受当前依赖支持的较新 LTS 版本。提交的 `package-
 
 ## 服务层
 
-所有后端操作统一通过 `src/services/types.ts` 的 `BoardService` 接口。组件和 hooks 不使用 `fetch`、XHR 或直接访问浏览器持久化，唯一 HTTP 传输实现位于 `src/services/http.ts`。
+所有看板后端操作统一通过 `src/services/types.ts` 的 `BoardService` 接口；登录/注销经 `services/auth.ts`。组件和 hooks 不使用 `fetch`、XHR，也不导入生成请求，唯一 HTTP 传输实现位于 `src/services/transport.ts`。
 
 | 文件 | 责任 |
 | --- | --- |
-| `src/services/types.ts` | 会话、项目、主机、错误与服务接口 |
+| `src/services/types.ts` | 生成 DTO 的类型重导出、必要别名、错误与服务接口 |
 | `src/services/mock.ts` | 内存数据操作、模拟快照、时间过滤、已读竞态和本地持久化 |
 | `src/services/seed.ts` | 三个项目、三台主机、三个工具来源的脱离真实环境的示例 |
-| `src/services/http.ts` | 所有 HTTP 请求、路径编码、超时、错误统一处理 |
+| `src/services/http.ts` | 将生成请求适配为 BoardService，保留 mock 注入边界 |
+| `src/services/generated/board.ts` | Orval 生成的 DTO、路径编码和请求函数，不手工编辑 |
+| `src/services/transport.ts` | 唯一 fetch 入口：Bearer、超时、调用方取消、204、错误和并发 401 保护 |
 | `src/services/index.ts` | 按环境变量选择实现，默认 Mock |
 | `src/hooks/useBoard.ts` | 拉取快照、定时更新、过期响应防护、操作忙状态 |
 
 `App` 也接受 `service` 属性，测试直接注入实现。Mock 状态保存在当前 origin 的 `localStorage` 键 `agents-board.mock.v1`；清除该键并重新加载即可恢复示例，存储失败时修改回滚并提示错误。运行中的示例任务不会随机完成，手动刷新仅模拟重新采样，离线示例保持离线；自动采样在读取 Mock 快照时惰性模拟，不会启动真实后台任务。
 
+## 接口生成
+
+唯一契约为 `../_docs/api/openapi.json`，当前为 0.4.0；使用锁定的 Orval 8.44.0 和 `orval.config.ts` 生成，不维护第二份 DTO 或 Query hooks。修改契约后运行 `npm run generate:api`，再运行 `npm run check:generated`、`npm run typecheck` 和 `npm test`；重现检查在比较后恢复原生成文件，不会悄悄接受契约漂移。
+
+生成类型保留 nullable、枚举和新增刷新作业协议；JSON Schema 的条件约束并不等于 TypeScript 运行时校验，服务端仍需按契约验证。新增 `requestSessionRefresh`/`getRefresh` 仅已生成，尚未接入 BoardService、mock 或详情 UI，不表示当前旧后端支持定向采集。现有 mock 新种子补全了证据字段，但旧 localStorage 状态的完整迁移、刷新作业模拟和取消语义留待后续 mock 对齐任务。
+
+Orval 的 `@scalar/json-magic` 传递依赖 `undici` 锁定覆盖为 7.30.1，避免安装时发现的已知漏洞；更新 Orval 时复查该覆盖。既有 Vitest 3/tinypool 的开发依赖审计告警不在本批迁移范围，不应把开发测试服务暴露到公网。
+
 示例刻意包含未读任务用于体验界面，不代表真实首次导入行为；真实后端须将导入前已完成任务初始化为 Read。来源发现、Git 身份解析、真实 SSH 配置读取、后台采集和原生工具已读识别仍由未来后端负责。
 
 ## 对接真实后端
 
-将 `.env.example` 复制为 `.env.local`，设置 `VITE_SERVICE_MODE=http` 与 `VITE_API_BASE_URL`，重新启动 Vite。默认相对 `/api`；开发期间可由本地反向代理提供同源 API，或设置明确的本地后端 URL 并由后端允许该开发 origin。
+将 `.env.example` 复制为 `.env.local`，设置 `VITE_SERVICE_MODE=http` 与 `VITE_API_BASE_URL=/api`，重新启动 Vite。已配置 `/api` 到 `http://127.0.0.1:3001` 的同源开发代理，固定端口 5173。先按 `../backend/README.md` 启动服务，再登录；默认账号/密码为 `admin/admin`，仅限本机预览，可通过启动环境覆盖。不允许跨域通配 CORS。生产静态部署与 preview 尚未配置 API 反向代理。
 
-HTTP 实现不会在请求失败时偷偷退回模拟数据。以下接口是本前端提出的对接契约，尚未声称现有后端已实现：
+HTTP 实现不会在请求失败时偷偷退回模拟数据。以下八个接口已由内存后端实现，但不执行真实采集；完整认证契约见 `../_docs/api/openapi.json`。登录/注销使用 `src/services/auth.ts`，与 BoardService 共用生成请求和 `src/services/transport.ts`；令牌仅放页面内存，401/过期/退出后清除，刷新页面需要重新登录。
 
 | 方法 | 路径 | 请求 | 响应 |
 | --- | --- | --- | --- |

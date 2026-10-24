@@ -1,114 +1,78 @@
-# Agents Board API 契约草案
+# Agents Board API
 
-**版本：0.2.0-draft · OpenAPI 3.1.1 · 2026-10-22**
+**契约版本：0.4.0 · OpenAPI 3.1.1 · 2026-10-24**
 
-[openapi.json](openapi.json) 是可导入 OpenAPI 工具的正式结构文档，**不是已上线接口或已验证的后端实现**。[可行性报告](../research/feasibility.md)说明真实能力边界，[脱敏证据](../research/evidence.json)保留观察依据。现有前端仍使用原服务接口和 mock，本轮未改应用代码。
+[openapi.json](openapi.json) 是机器可读的唯一 HTTP 契约。TypeScript backend 已实现八个业务接口及认证扩展，并支持显式真实单次快照；持续监控尚未实现，真实结果见 [单次采集说明](../backend/real-snapshot.md)。0.4.0 新增的 continuous 模式、定向刷新作业与采集版本是迁移协议，不表示当前服务已支持；详细字段与兼容边界见 [Go 迁移契约](../backend/go-contract.md)，原有端点说明仍适用于 TypeScript 后端。
 
-## 1. 使用方式
+## 1. 启动与导入
 
-将 openapi.json 导入支持 OpenAPI 3.1 的本地 Swagger UI / Redoc 或 API 客户端。server 为相对路径 /api，必须由本机同源服务提供；不要把文档托管地址误当真实 API，也不要向公共文档服务上传真实会话数据。所有示例都是合成内容。
+运行方法见 [backend/README](../../backend/README.md)。默认 API 为 http://127.0.0.1:3001/api，前端通过 Vite 的 /api 同源代理访问。生产静态托管/CORS 尚未配置，不要直接把前端 API 地址换成跨域地址。
 
-本契约沿用 frontend/src/services/http.ts 的 8 个操作，但**不完全兼容** frontend/src/services/types.ts：空值与来源信息需要显式适配，不能直接用类型断言假定可用。
+将 openapi.json 导入支持 OpenAPI 3.1 的工具；所有示例为合成内容。运行时 GET /api/openapi.json 返回同一文档。编译后端时必须保留契约文件，输入校验会读取其中的 JSON Schema。
 
-## 2. 接口目录
+## 2. 操作目录
 
-| 方法 | 路径（相对于 /api） | 请求体 | 成功响应 |
+路径相对于 /api；除明确公开项外均要求 Bearer。
+
+| 方法 | 路径 | 输入 | 成功 |
 |---|---|---|---|
+| POST | /auth/login（公开） | {username,password} | 200 TokenResponse |
+| POST | /auth/logout | 无 | 204，撤销当前令牌 |
+| GET | /health（公开） | 无 | 200 {status,mode} |
+| GET | /openapi.json（公开） | 无 | 200 OpenAPI |
 | GET | /dashboard | 无 | 200 Dashboard |
 | GET | /sessions/{id} | 无 | 200 Session |
 | POST | /sessions/{id}/read | {turnId} | 200 Session |
 | GET | /hosts | 无 | 200 HostSettings |
 | POST | /hosts | {target} | 201 Host |
-| PATCH | /hosts/{id} | {enabled} | 204，无正文 |
-| DELETE | /hosts/{id} | 无 | 204，无正文 |
-| POST | /refresh | 无 | 204，无正文；只表示入队/合并 |
+| PATCH | /hosts/{id} | {enabled} | 204 |
+| DELETE | /hosts/{id} | 无 | 204 |
+| POST | /refresh | 无 | 204，仅入队/合并 |
 
-GET 不隐式改变阅读状态；前端打开完成卡片后再调用 read。所有 JSON 错误采用 {code,message}；详细 schema、operationId、参数与示例以 openapi.json 为准。不新增全历史/原生会话操作接口。
+204 无正文。GET 不隐式已读。输入类型严格校验，不把字符串 false 转换为 boolean；额外字段拒绝。详细参数、operationId、状态码、空值与示例以 OpenAPI 为准。
 
-## 3. 核心语义
+## 3. 认证与错误
 
-### 最新轮与已读
+默认账号/密码为 admin/admin，仅限本机预览，可通过启动环境覆盖；不提供公开注册。随机 salt 的 scrypt 保存密码摘要；随机不透明 Bearer 令牌默认一小时有效，仅在服务端保留 SHA-256 摘要，注销撤销，重启清空。所有看板数据属于单用户共享工作区，尚无多租户授权。
 
-- 每个原生会话一张卡，只展示最新任务。会话 ID 由存储来源命名空间及原生身份稳定构造，不能仅靠目录、标题或最新修改时间。
-- turnId 为原生 ID，或经证实稳定的用户轮锚点派生 ID；不能确定时为 null，turnIdentityKind=unavailable。
-- 首次采集的已完成历史导入 Read；已经跟踪的任务随后完成进入 Unread。旧开始记录没有足够当前证据时不当作仍在运行。
-- read 只接受 fresh 且 read/unread 的最新轮；幂等地写应用标记。未知 turnId、轮次变化、尚未成功完成、样本过期分别返回 409。
-- 原生 read 属于独立能力；候选字段未经行为验证不能替代 Web 阅读。标记不写入 Cursor/Codex 原生存储。
-- 取消/失败/中断不当成成功完成，冻结五态下显示 Unknown 加原因。若未来需要独立终止状态，须修改产品约定，而非私加枚举。
+错误结构为 {code,message}：400 无效输入；401 缺失/失效令牌或登录错误；403 Host/Origin 拒绝；404 不存在；409 业务冲突；413 超过 16 KiB；415 非 JSON 请求体；429 限流；500 内部错误。503 仍保留为未来本地存储不可用的契约错误，当前内存模式没有外部存储依赖。
 
-### 时间与新鲜度
+401 响应带 WWW-Authenticate: Bearer；响应均 no-store。非本机 Host、foreign Origin、cross-site 请求拒绝；无通配 CORS。单台演示主机离线仍为 200 + warning，不令整个看板返回 503。
 
-- activityAt 只能是实际 Agent 活动；completedAt 只能是最新任务成功完成时间；缺证据均为 null。
-- sampledAt 是聚合快照生成时间，不是全体主机扫描完成证明。主机 lastSuccessAt 才反映该主机成功扫描。
-- freshness 由**存储主机**采集时效决定；执行工作区主机连接状态单独展示。fresh 也不意味着可据此确认 Running。
-- 离线/停用保留旧状态但设 stale，并给原因；旧 Running 不计为“确认正在运行”。
-- 定时每主机 15 秒尝试一次，单主机不重叠；手动刷新合并已有扫描，不无限排队。204 不承诺采集完成，前端继续轮询。
-- 项目按实际活动滚动 7 天过滤；Read 且已证实完成超过 24 小时才隐藏。不用 read 时间重置隐藏窗口。
-- **待产品确认的降级策略**：缺少可靠 activityAt 的未解析记录保留在 unknown/警告区，而非猜测时间后隐藏；未知 completedAt 不执行精确 24 小时隐藏。此草案采用保守显示，并未改变已知时间记录的冻结规则。
+## 4. 状态、时间与身份
 
-### 来源与项目归属
+- 每个原生会话一张卡，只取最新任务；稳定 turnId 可为原生或经验证的派生身份，不可得时 null。
+- read 原子比较最新 turnId；仅 fresh 且 read/unread 可写。同一轮重复请求幂等。TURN_CHANGED、TURN_ID_UNAVAILABLE、NOT_COMPLETED、SNAPSHOT_STALE 均为 409；失败后不得自动标记新轮。
+- 应用阅读标记不写入原生工具；真实 nativeRead 能力未验证时 Web-only。
+- status 与 freshness 分离；stale Running 仅是历史快照，不计为当前已确认运行。中断/失败不视为成功 Unread。
+- activityAt 只代表 Agent 执行活动；completedAt 只代表成功任务完成时间；未知 null，不用 mtime/recency/Web 点击代替。
+- 项目按最近可靠活动滚动 7 天过滤；Read 且已证实完成超过 24h 隐藏。未知活动时间保守保留并警告；未知完成时间不执行精确 24h 隐藏。这是草案已有的降级策略，真实采集上线前仍需产品确认。
+- storageHostId 是记录存储/采集主机；hostId 是执行工作区主机，可 null。freshness 基于存储主机。
+- 停用保留 stale 缓存；删除只移除该存储主机拥有的会话和标记，其他会话仅解除执行主机引用。无会话项目不显示。
+- Git 身份仅在可靠证据下归并；非 Git 用主机限定目录，不能把同名项目直接合并。
 
-- storageHostId：原生记录存储和采集位置；hostId：执行工作区位置，可能未知。Remote SSH 会话两者可以不同。
-- 未验证来源不能标成 codex_cli；Desktop、子代理不默认纳入 MVP，不能用 originator=codex-tui 单字段覆盖 source=vscode。
-- 有可靠 origin 才跨主机归并；同机通过 git-common-dir 合并 worktree；无 Git 使用主机限定目录。无法关联时保留明确 unresolved，不用同名目录猜测。
-- 相同原生会话若在多处出现，必须证明共享来源命名空间才能去重；本轮未验证镜像副本关系。
-- 删除主机仅移除应用配置、该存储主机缓存及其阅读标记。执行位置落在该主机但存储在别处的记录不连带删除；hostId 应重算/解除关联。其他项目聚合需重算。
+## 5. 演示刷新与种子
 
-### 能力与证据
+每 15 秒仅刷新合成在线主机的采样时间，不随机推进任务，不把采样时间写成 Agent activity。手动刷新合并尚未执行的刷新，204 仅表示接受，不能推断采集成功。新添加主机保持 unknown，lastSuccessAt=null；离线种子保持离线。真实 SSH、增量采集、跨主机隔离仍未实现。
 
-capabilities 的 verified/candidate/unavailable 是**适配器版本验收结果**，不是“字段存在就 verified”。evidence.level=observed 只说明观察到该依据，不能跨越语义验证。例如 observed composer status 不代表成功完成语义已经获证。
+sampledAt 是聚合生成时间；lastSuccessAt 是对应主机采样成功时间。即使采样时间很新，合成状态也不构成真实执行证据。Dashboard.warnings 始终包含演示提示。
 
-Session.response 只接受确认的最终回复，不用最后一个 assistant、思考文本或工具输出填充；无法确认返回 null。API 不输出原始数据库行、全量日志或隐藏思考。
+初始 seed 的 Read 代表历史导入，Unread 代表跟踪之后完成，用于交互体验；这不是实现了真实“首次成功导入”算法。重启所有修改与令牌丢失，符合本轮指定内存存储范围。
 
-## 4. 与当前前端的差异
+## 6. 前端与契约差异
 
-| 字段/行为 | 现有前端 | 草案 | 后续适配 |
-|---|---|---|---|
-| Session.turnId | string | string/null | 未知时禁用 markRead，不能发送空字符串 |
-| Session.hostId | string | string/null | 显示未解析执行主机；使用 storageHostId 展示采集故障 |
-| Session.directory、prompt、activityAt | string | string/null | 提供明确未知占位；禁止对 null 做时间/文本运算 |
-| Session.storageHostId、turnIdentityKind、evidence、capabilities | 无 | 必填新增 | 读取真实能力与缺失原因 |
-| Project.repository、activityAt | string | string/null | 非 Git/时间未知的显示与排序 |
-| Project.identityKind | 无 | 必填新增 | 展示归并依据/歧义 |
-| Host.connection | online/offline | 加 unknown | 新增目标尚未扫描时不能伪报离线或在线 |
-| Dashboard.warnings | 无 | 必填数组 | 部分采集/不支持来源需显式展示 |
-| read 冲突 | 通用 ServiceError | 明确 409 code | 重新读取详情，不自动 markRead 新轮 |
-| refresh | Promise<void> | 204 异步语义 | 不把按钮请求成功当全部扫描成功 |
+已接入登录/注销及 Bearer、空值显示、未知连接、warning、存储/执行主机区分。缺失轮次或 stale 不会触发自动 read；401 返回登录页。HTTP 不自动回退 mock。
 
-现有 status/source/freshness 枚举及八个路由保持不变。不得通过伪造值来维持旧 TypeScript 类型；真实后端落地时同步更新服务层类型、mock 和测试，**本轮未执行**。
+后端提供 evidence/capabilities/identityKind；前端暂不提供完整逐字段能力面板，仅通过 reason、warning、null 表达限制。Mock 仍兼容独立无后端体验，其历史错误码/停用模拟规则不当作真实 HTTP 契约。
 
-## 5. 错误与安全约束
+真实字段缺口、替代策略和优先顺序详见 [数据需求缺口](../backend/data-gaps.md)。静态样本、官方协议与实际行为验证不能互相替代。
 
-- 400：无效输入；404：会话/主机不存在；409：轮次冲突、不能已读、重复主机、本地主机受保护。
-- 403：Host/Origin 不符合本地策略；500：内部错误；503：应用本地存储/聚合不可用。单台 SSH 失败仍返回 200 缓存与 warning，不把整个 Dashboard 变成 503。
-- 默认只监听 loopback。OpenAPI security=[] 表示草案未定义登录机制，不代表“任何网页都可调用”。必须校验 Host/Origin，拒绝跨站写请求，无通配 CORS；JSON 写入要求 application/json。
-- 未实现跨域/外网部署，不应直接开放 0.0.0.0。若未来开放非本机访问，需单独设计认证、授权与 CSRF 防护。
-- SSH 目标使用参数数组，严格校验且不能拼接 shell；禁止注入 SSH 选项/任意代理命令。仅复用可信本机 SSH 配置，继续主机密钥校验，不保存密码/私钥。
-- 列表、错误、日志均避免泄露凭据。会话本身有敏感内容，因此本地服务安全边界是实现验收项，当前并未实现或安全测试。
+## 7. 验证
 
-## 6. 数据证据追踪
+- 后端 Fastify inject 测试覆盖认证、业务路由、输入校验、时间规则和响应 schema；密码/令牌与存储另有独立测试。
+- 前端测试覆盖登录、Bearer 传递、401 清理和原有交互回归；类型检查与构建独立执行。
+- 可在独立 Python 环境执行 `python -m openapi_spec_validator _docs/api/openapi.json` 检查文档结构。
+- 验证通过不意味着真实 Agent/SSH 采集门槛通过，也不证明生产安全、持久化或真实 15 秒刷新 SLA。
 
-| API 字段/行为 | 观察依据 | 仍需证明 |
-|---|---|---|
-| Codex turnId、startedAt、completedAt、durationSeconds | E05 原生事件字段 | 实时增量、轮次归并、版本升级兼容 |
-| response | E05 last_agent_message；E03 IDE 候选 | IDE final 语义；Cursor CLI 图遍历 |
-| storageHostId / hostId | E04 工作区映射 | 未匹配记录、镜像去重 |
-| 项目 worktree 身份 | E06 三个 Git common dir 相同 | 跨主机 origin 归一化 |
-| nativeRead / waiting 能力 | E02、E03 候选字段；E09 官方协议 | V3/V4 行为验收 |
-| freshness / async refresh | E03、E07 查询性能 | V6 持续轮询、失败隔离 |
-| read、hosts 配置写入 | 产品要求与既有前端服务 | 应用存储、原子性、幂等性尚未实现 |
-
-## 7. 文档校验
-
-2026-10-22 已用临时安装的 openapi-spec-validator 0.7.2 和 JSON Schema 2020-12 校验器验证：
-
-- OpenAPI 3.1.1 结构及引用有效，8 个唯一 operationId。
-- 15 个组件示例、43 个响应示例、3 个请求示例通过 schema 与 date-time 格式校验。
-- 6 个反例（非法状态、负耗时、错误时间、Unknown/stale 无原因、不可用轮次却带 ID）均被拒绝；6 个文档本地链接有效。
-- 10 条证据 ID 唯一；示例均为合成数据。
-- 校验依赖只安装在本机临时目录，不修改 frontend/package.json/lockfile，不在远端安装软件。
-
-可在独立环境安装相同校验器后执行 `python -m openapi_spec_validator _docs/api/openapi.json` 复查结构。示例校验还需按 components/schemas 引用解析执行 JSON Schema 校验；工具默认结构校验不等于已经验证每个示例。
-
-**未做 HTTP 集成测试**：没有真实后端。本次通过的是契约结构与示例，不是采集器功能、数据完整性或 15 秒刷新 SLA。剩余运行时验收见可行性报告 V1–V8。
+历史草案 0.2.0 的无认证声明已由 0.3.0 替代；旧客户端必须登录。来源研究记录保留历史日期，不将演示后端实现回填为采集验证成功。
 
