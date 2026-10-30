@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"agents-board/backend-go/internal/api/generated"
+	"agents-board/backend-go/internal/store"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	ginmiddleware "github.com/oapi-codegen/gin-middleware"
@@ -25,7 +26,7 @@ func Validator(authentication openapi3filter.AuthenticationFunc) (gin.HandlerFun
 	}
 	validator := ginmiddleware.OapiRequestValidatorWithOptions(specification, &ginmiddleware.Options{
 		SilenceServersWarning: true,
-		Options: openapi3filter.Options{AuthenticationFunc: func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+		Options: openapi3filter.Options{RejectWhenRequestBodyNotSpecified: true, AuthenticationFunc: func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 			err := errors.New("authentication is not configured")
 			if authentication != nil {
 				err = authentication(ctx, input)
@@ -72,6 +73,7 @@ func Validator(authentication openapi3filter.AuthenticationFunc) (gin.HandlerFun
 				return
 			}
 			request.Request.Body = io.NopCloser(bytes.NewReader(body))
+			request.Request.ContentLength = int64(len(body))
 		}
 		validator(request)
 	}, nil
@@ -101,7 +103,18 @@ func New() (*gin.Engine, error) {
 }
 
 func StrictHandler(handler generated.StrictServerInterface) generated.ServerInterface {
-	internalError := func(request *gin.Context, _ error) {
+	internalError := func(request *gin.Context, err error) {
+		var failure *store.Error
+		if errors.As(err, &failure) {
+			if failure.Status == 401 {
+				request.Header("WWW-Authenticate", "Bearer")
+			}
+			if failure.Status == 429 {
+				request.Header("Retry-After", "60")
+			}
+			request.AbortWithStatusJSON(failure.Status, generated.Error{Code: failure.Code, Message: failure.Message})
+			return
+		}
 		request.JSON(http.StatusInternalServerError, generated.Error{Code: generated.INTERNALERROR, Message: "Internal server error"})
 	}
 	return generated.NewStrictHandlerWithOptions(handler, nil, generated.StrictGinServerOptions{

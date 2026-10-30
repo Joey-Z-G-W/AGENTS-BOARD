@@ -1,18 +1,24 @@
 import { createSeed, type MockState } from './seed';
 import { ServiceError, type BoardService, type Host, type Session } from './types';
+import type { RefreshJob } from './generated/board';
 
 const STORAGE_KEY = 'agents-board.mock.v1';
 const HOUR = 3_600_000;
 const priority = { waiting: 0, unread: 1, running: 2, read: 3, unknown: 4 };
+let instances = 0;
 
 interface MockOptions {
   storage?: Pick<Storage, 'getItem' | 'setItem'>;
   initialState?: MockState;
   now?: () => number;
   latency?: number;
+  refreshOutcome?: 'succeeded' | 'failed';
 }
 
 export function createMockService(options: MockOptions = {}): BoardService {
+  const epoch = `mock-${++instances}`;
+  let sequence = 0;
+  const jobs = new Map<string, RefreshJob>();
   const now = options.now ?? Date.now;
   let state = structuredClone(options.initialState ?? createSeed(now()));
   try {
@@ -55,7 +61,42 @@ export function createMockService(options: MockOptions = {}): BoardService {
 
   return {
     mode: 'mock',
-    async getDashboard() {
+    async requestSessionRefresh(id, signal) {
+      if (signal?.aborted) throw new ServiceError('请求已取消。', 'CANCELLED');
+      const session = findSession(id);
+      const host = findHost(session.storageHostId);
+      if (!host.enabled) throw new ServiceError('主机已停用。', 'HOST_DISABLED');
+      for (const [key, job] of jobs) {
+        if (job.expiresAt && Date.parse(job.expiresAt) <= now()) jobs.delete(key);
+        else if (job.sessionId === id && ['queued', 'running'].includes(job.status)) return structuredClone(job);
+      }
+      if (jobs.size >= 128) throw new ServiceError('刷新作业已达上限。', 'RATE_LIMITED');
+      const job: RefreshJob = { id: `${epoch}-${++sequence}`, sessionId: id, status: 'queued', requestedAt: new Date(now()).toISOString(), startedAt: null, finishedAt: null, expiresAt: null, collectionVersion: null, error: null };
+      jobs.set(job.id, job);
+      return structuredClone(job);
+    },
+    async getRefresh(id, signal) {
+      if (signal?.aborted) throw new ServiceError('请求已取消。', 'CANCELLED');
+      const job = jobs.get(id);
+      if (!job || (job.expiresAt && Date.parse(job.expiresAt) <= now())) throw new ServiceError('刷新作业已过期。', 'NOT_FOUND');
+      const session = findSession(job.sessionId);
+      const host = findHost(session.storageHostId);
+      if (job.status === 'queued') { job.status = 'running'; job.startedAt = new Date(now()).toISOString(); }
+      else if (job.status === 'running') {
+        job.finishedAt = new Date(now()).toISOString();
+        job.expiresAt = new Date(now() + 600_000).toISOString();
+        if (options.refreshOutcome === 'failed' || !host.enabled || host.connection !== 'online') {
+          job.status = 'failed'; job.error = { code: 'REFRESH_FAILED', message: '模拟来源检查失败，保留原内容。' };
+        } else {
+          job.status = 'succeeded';
+          job.collectionVersion = { epoch, sequence: (session.collectionVersion?.epoch === epoch ? session.collectionVersion.sequence : 0) + 1 };
+          const updated = { ...session, collectedAt: job.finishedAt, collectionVersion: job.collectionVersion };
+          state = { ...state, sessions: state.sessions.map(entry => entry.id === session.id ? updated : entry) };
+        }
+      }
+      return structuredClone(job);
+    },
+    async getDashboard(_signal, includeHistory = false) {
       await pause();
       if (now() - Date.parse(state.sampledAt) >= 15_000) {
         const sampledAt = new Date(now()).toISOString();
@@ -63,18 +104,23 @@ export function createMockService(options: MockOptions = {}): BoardService {
       }
       const enabled = new Set(state.hosts.filter((host) => host.enabled).map((host) => host.id));
       const projects = state.projects.map((project) => {
-        const allSessions = state.sessions.filter((session) => session.projectId === project.id && session.hostId !== null && enabled.has(session.hostId));
+        const allSessions = state.sessions.filter((session) => session.projectId === project.id && enabled.has(session.storageHostId));
         const activity = Math.max(...allSessions.map((session) => session.activityAt ? Date.parse(session.activityAt) : -Infinity));
         return {
           ...project,
           identityKind: 'git_remote' as const,
           activityAt: Number.isFinite(activity) ? new Date(activity).toISOString() : new Date(0).toISOString(),
-          sessions: allSessions.filter((session) => !(session.status === 'read' && session.completedAt && now() - Date.parse(session.completedAt) > 24 * HOUR))
+          sessions: allSessions.filter((session) => includeHistory || !(session.status === 'read' && session.completedAt && now() - Date.parse(session.completedAt) > 24 * HOUR))
             .map(withFreshness).sort((left, right) => priority[left.status] - priority[right.status] || Date.parse(right.activityAt ?? '') - Date.parse(left.activityAt ?? '')),
         };
-      }).filter((project) => now() - Date.parse(project.activityAt) <= 7 * 24 * HOUR)
+      }).filter((project) => includeHistory || now() - Date.parse(project.activityAt) <= 7 * 24 * HOUR)
         .sort((left, right) => Date.parse(right.activityAt) - Date.parse(left.activityAt));
-      return structuredClone({ projects, sampledAt: state.sampledAt, warnings: [] });
+      const sourceCounts = (['codex_cli', 'codex_desktop', 'cursor_cli', 'cursor_ide'] as const).map(source => {
+        const collected = state.sessions.filter(session => session.source === source && enabled.has(session.storageHostId)).length;
+        const visible = projects.flatMap(project => project.sessions).filter(session => session.source === source).length;
+        return { source, collected, visible, hidden: collected - visible };
+      });
+      return structuredClone({ projects, sampledAt: state.sampledAt, warnings: [], sourceCounts });
     },
     async getSession(id) {
       await pause();

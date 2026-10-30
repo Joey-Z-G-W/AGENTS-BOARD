@@ -207,7 +207,19 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "includeHistory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "显示已采集历史，跳过7天项目和24小时已读隐藏；不改变已读状态。"
+          }
+        ]
       }
     },
     "/sessions/{id}": {
@@ -2510,6 +2522,7 @@
             "type": "string",
             "enum": [
               "codex_cli",
+              "codex_desktop",
               "cursor_cli",
               "cursor_ide"
             ]
@@ -2623,6 +2636,10 @@
             "type": "string",
             "format": "date-time",
             "description": "此会话最近成功读取并提交的 UTC 时间；与 collectionVersion 成对出现，失败保留旧值，不等于聚合 sampledAt 或 Agent 活动时间。旧模式可省略。"
+          },
+          "subagents": {
+            "$ref": "#/components/schemas/SubagentCollection",
+            "description": "此存储主机上该父会话的直接子代理，可能跨任务轮次。父会话定向刷新和已读不更新此缓存。"
           }
         },
         "description": "一张原生会话卡，仅最新任务。中断/失败不映射为成功 Unread；冻结状态集合下用 Unknown 加原因。stale 表示最后样本，不证明当前 Running。",
@@ -2932,6 +2949,7 @@
             ],
             "enum": [
               "codex_cli",
+              "codex_desktop",
               "cursor_cli",
               "cursor_ide",
               null
@@ -2976,6 +2994,13 @@
             "items": {
               "$ref": "#/components/schemas/Warning"
             }
+          },
+          "sourceCounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceCount"
+            },
+            "description": "当前内存已采集及当前视图可见/隐藏数量；不代表磁盘上全部来源覆盖。"
           }
         },
         "examples": [
@@ -3328,8 +3353,226 @@
           },
           "mode": {
             "type": "string",
-            "enum": ["in-memory-demo", "real-snapshot", "continuous"],
+            "enum": [
+              "in-memory-demo",
+              "real-snapshot",
+              "continuous"
+            ],
             "description": "continuous 仅在真实持续采集已经启动后使用；协议允许该值不代表旧后端支持。"
+          }
+        }
+      },
+      "SourceCount": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "collected",
+          "visible",
+          "hidden"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "codex_cli",
+              "codex_desktop",
+              "cursor_cli",
+              "cursor_ide"
+            ]
+          },
+          "collected": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "visible": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hidden": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Subagent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "nickname",
+          "path",
+          "role",
+          "model",
+          "effort",
+          "turnId",
+          "prompt",
+          "response",
+          "reason",
+          "modelObservedAt",
+          "startedAt",
+          "completedAt",
+          "activityAt",
+          "nativeId",
+          "parentThreadId",
+          "status",
+          "collectedAt",
+          "freshness"
+        ],
+        "properties": {
+          "nickname": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "turnId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "response": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "modelObservedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "activityAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "nativeId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "parentThreadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "completed",
+              "interrupted"
+            ]
+          },
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale"
+            ],
+            "x-enum-varnames": [
+              "SubagentFreshnessFresh",
+              "SubagentFreshnessStale"
+            ]
+          }
+        }
+      },
+      "SubagentCollection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "scannedAt",
+          "items"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "error"
+            ],
+            "description": "后台本机Codex扫描覆盖情况；缺少整个集合表示尚未扫描。"
+          },
+          "scannedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "$ref": "#/components/schemas/Subagent"
+            }
           }
         }
       }

@@ -4,7 +4,7 @@ export const statusLabels: Record<SessionStatus, string> = {
   waiting: '等待处理', unread: '完成 · 未读', running: '正在运行', read: '已读', unknown: '状态未知',
 };
 
-export const sourceLabels = { codex_cli: 'Codex CLI', cursor_cli: 'Cursor CLI', cursor_ide: 'Cursor IDE' };
+export const sourceLabels = { codex_cli: 'Codex CLI', codex_desktop: 'Codex 桌面', cursor_cli: 'Cursor CLI', cursor_ide: 'Cursor IDE' };
 
 export function relativeTime(value: string | null, now = Date.now()) {
   if (!value || !Number.isFinite(Date.parse(value))) return '时间未知';

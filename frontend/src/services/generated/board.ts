@@ -199,6 +199,7 @@ export type SessionSource = typeof SessionSource[keyof typeof SessionSource];
 
 export const SessionSource = {
   codex_cli: 'codex_cli',
+  codex_desktop: 'codex_desktop',
   cursor_cli: 'cursor_cli',
   cursor_ide: 'cursor_ide',
 } as const;
@@ -221,6 +222,112 @@ export const SessionFreshness = {
   fresh: 'fresh',
   stale: 'stale',
 } as const;
+
+/**
+ * 后台本机Codex扫描覆盖情况；缺少整个集合表示尚未扫描。
+ */
+export type SubagentCollectionStatus = typeof SubagentCollectionStatus[keyof typeof SubagentCollectionStatus];
+
+
+export const SubagentCollectionStatus = {
+  complete: 'complete',
+  partial: 'partial',
+  error: 'error',
+} as const;
+
+export type SubagentStatus = typeof SubagentStatus[keyof typeof SubagentStatus];
+
+
+export const SubagentStatus = {
+  unknown: 'unknown',
+  completed: 'completed',
+  interrupted: 'interrupted',
+} as const;
+
+export type SubagentFreshness = typeof SubagentFreshness[keyof typeof SubagentFreshness];
+
+
+export const SubagentFreshness = {
+  SubagentFreshnessFresh: 'fresh',
+  SubagentFreshnessStale: 'stale',
+} as const;
+
+export interface Subagent {
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  nickname: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  path: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  role: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  model: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  effort: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  turnId: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  prompt: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  response: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  reason: string | null;
+  /** @nullable */
+  modelObservedAt: string | null;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  activityAt: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  nativeId: string;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  parentThreadId: string;
+  status: SubagentStatus;
+  collectedAt: string;
+  freshness: SubagentFreshness;
+}
+
+export interface SubagentCollection {
+  /** 后台本机Codex扫描覆盖情况；缺少整个集合表示尚未扫描。 */
+  status: SubagentCollectionStatus;
+  scannedAt: string;
+  /** @maxItems 256 */
+  items: Subagent[];
+}
 
 /**
  * 一张原生会话卡，仅最新任务。中断/失败不映射为成功 Unread；冻结状态集合下用 Unknown 加原因。stale 表示最后样本，不证明当前 Running。
@@ -318,6 +425,8 @@ export type Session = unknown & unknown & unknown & ({
   collectionVersion?: CollectionVersion;
   /** 此会话最近成功读取并提交的 UTC 时间；与 collectionVersion 成对出现，失败保留旧值，不等于聚合 sampledAt 或 Agent 活动时间。旧模式可省略。 */
   collectedAt?: string;
+  /** 此存储主机上该父会话的直接子代理，可能跨任务轮次。父会话定向刷新和已读不更新此缓存。 */
+  subagents?: SubagentCollection;
 });
 
 export type ProjectIdentityKind = typeof ProjectIdentityKind[keyof typeof ProjectIdentityKind];
@@ -374,6 +483,7 @@ export type WarningSource = typeof WarningSource[keyof typeof WarningSource] | n
 
 export const WarningSource = {
   codex_cli: 'codex_cli',
+  codex_desktop: 'codex_desktop',
   cursor_cli: 'cursor_cli',
   cursor_ide: 'cursor_ide',
 } as const;
@@ -391,11 +501,33 @@ export interface Warning {
   message: string;
 }
 
+export type SourceCountSource = typeof SourceCountSource[keyof typeof SourceCountSource];
+
+
+export const SourceCountSource = {
+  codex_cli: 'codex_cli',
+  codex_desktop: 'codex_desktop',
+  cursor_cli: 'cursor_cli',
+  cursor_ide: 'cursor_ide',
+} as const;
+
+export interface SourceCount {
+  source: SourceCountSource;
+  /** @minimum 0 */
+  collected: number;
+  /** @minimum 0 */
+  visible: number;
+  /** @minimum 0 */
+  hidden: number;
+}
+
 export interface Dashboard {
   projects: Project[];
   /** 生成本地聚合快照的时间；不表示所有主机同时采集成功。 */
   sampledAt: string;
   warnings: Warning[];
+  /** 当前内存已采集及当前视图可见/隐藏数量；不代表磁盘上全部来源覆盖。 */
+  sourceCounts?: SourceCount[];
 }
 
 export type HostConnection = typeof HostConnection[keyof typeof HostConnection];
@@ -505,23 +637,37 @@ export interface Health {
   mode: HealthMode;
 }
 
+export type GetDashboardParams = {
+/**
+ * 显示已采集历史，跳过7天项目和24小时已读隐藏；不改变已读状态。
+ */
+includeHistory?: boolean;
+};
+
 export type GetOpenApi200 = { [key: string]: unknown };
 
-export const getGetDashboardUrl = () => {
+export const getGetDashboardUrl = (params?: GetDashboardParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/dashboard`
+  return stringifiedParams.length > 0 ? `/dashboard?${stringifiedParams}` : `/dashboard`
 }
 
 /**
  * 不阻塞等待所有 SSH 扫描。部分主机失败仍返回 200、缓存与 warnings。按实际活动滚动 7 天过滤；Read 且已证明完成超过 24 小时才隐藏。没有可靠活动时间的降级策略见 README；本草案保留并警告。
  * @summary 读取最近聚合快照
  */
-export const getDashboard = async ( options?: Parameters<typeof apiFetch>[1]): Promise<Dashboard> => {
+export const getDashboard = async (params?: GetDashboardParams, options?: Parameters<typeof apiFetch>[1]): Promise<Dashboard> => {
 
-  return apiFetch<Dashboard>(getGetDashboardUrl(),
+  return apiFetch<Dashboard>(getGetDashboardUrl(params),
   {
     ...options,
     method: 'GET'

@@ -52,6 +52,8 @@ func TestGeneratedGinRoutesAndValidation(t *testing.T) {
 		{"/api/auth/login", `{"username":"admin","password":"admin","extra":true}`, 400},
 		{"/api/auth/login", `{"username":"admin","password":"admin"} {}`, 400},
 		{"/api/refresh", "", 204},
+		{"/api/refresh", "{}", 400},
+		{"/api/sessions/session/refresh", "{}", 400},
 		{"/api/sessions/session/refresh", "", 202},
 		{"/api/sessions/host%2Fsession%20one/refresh", "", 202},
 		{"/refresh", "", 404},

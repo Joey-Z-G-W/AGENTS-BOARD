@@ -7,6 +7,20 @@ const HOUR = 3_600_000;
 const makeService = () => createMockService({ now: () => NOW });
 
 describe('Mock service: dashboard rules', () => {
+  it('counts and filters cross-host sessions by their storage host consistently', async () => {
+    const seed = createSeed(NOW);
+    seed.sessions = [seed.sessions[0]];
+    seed.sessions[0].storageHostId = 'dev-server';
+    seed.sessions[0].hostId = 'local';
+    const service = createMockService({ now: () => NOW, initialState: seed });
+    await service.setHostEnabled('dev-server', false);
+    const dashboard = await service.getDashboard(undefined, true);
+    expect(dashboard.projects.flatMap(project => project.sessions)).toHaveLength(0);
+    for (const count of dashboard.sourceCounts ?? []) {
+      expect(count.hidden).toBeGreaterThanOrEqual(0);
+      expect(count.collected).toBe(count.visible + count.hidden);
+    }
+  });
   it('groups native sessions once, sorts projects by activity and sessions by attention', async () => {
     const dashboard = await makeService().getDashboard();
     expect(dashboard.projects.map((project) => project.id)).toEqual(['board', 'gateway', 'design']);

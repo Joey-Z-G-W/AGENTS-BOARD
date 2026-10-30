@@ -7,6 +7,30 @@ import { createSeed } from './services/seed';
 import { ServiceError } from './services/types';
 
 describe('Dashboard interactions', () => {
+  it('shows collected history by source and switches back without reusing history results', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    const seed = createSeed(now);
+    const session = seed.sessions[0];
+    session.title = '历史桌面会话';
+    session.source = 'codex_desktop';
+    session.status = 'read';
+    session.completedAt = new Date(now - 48 * 3600_000).toISOString();
+    session.activityAt = session.completedAt;
+    const service = createMockService({ initialState: seed, now: () => now });
+    render(<App service={service} />);
+    await screen.findByRole('region', { name: '来源覆盖' });
+    expect(screen.queryByRole('button', { name: '查看 历史桌面会话' })).not.toBeInTheDocument();
+    const coverage = screen.getByRole('region', { name: '来源覆盖' });
+    expect(within(coverage).getByRole('button', { name: /Codex 桌面.*已采集 1.*可见 0.*隐藏 1/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: '包含已采集历史' }));
+    expect(await screen.findByRole('button', { name: '查看 历史桌面会话' })).toBeInTheDocument();
+    await user.click(within(screen.getByRole('region', { name: '来源覆盖' })).getByRole('button', { name: /Codex 桌面.*可见 1/ }));
+    expect(screen.queryByRole('button', { name: '查看 整理服务层的数据契约' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: '包含已采集历史' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '查看 历史桌面会话' })).not.toBeInTheDocument());
+    expect((await service.getSession(session.id)).status).toBe('read');
+  });
   it('runs entirely against the mock, exposes Unknown and excludes stale Running from live counts', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
@@ -30,6 +54,7 @@ describe('Dashboard interactions', () => {
     expect(within(dialog).getByText(/验证结果：组件测试通过，构建通过/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '关闭详情' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看 实现项目折叠列表与会话卡片' })).toHaveFocus();
     view.unmount();
     render(<App service={createMockService({ storage: localStorage })} />);
     const card = await screen.findByRole('button', { name: '查看 实现项目折叠列表与会话卡片' });
@@ -104,6 +129,35 @@ describe('Dashboard interactions', () => {
     await user.click(await screen.findByRole('button', { name: '查看 实现项目折叠列表与会话卡片' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('新任务已开始');
     expect(within(screen.getByRole('dialog')).getByText('完成 · 未读')).toBeInTheDocument();
+  });
+
+  it('retains cached content and never marks read when source refresh fails', async () => {
+    const user = userEvent.setup();
+    const service = createMockService({ refreshOutcome: 'failed' });
+    const read = vi.spyOn(service, 'markRead');
+    render(<App service={service} />);
+    await user.click(await screen.findByRole('button', { name: '查看 实现项目折叠列表与会话卡片' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('模拟来源检查失败');
+    expect(within(screen.getByRole('dialog')).getByText(/验证结果：组件测试通过/)).toBeInTheDocument();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('does not consume a completed refresh arriving after the detail was closed', async () => {
+    const user = userEvent.setup();
+    const service = createMockService();
+    const getRefresh = service.getRefresh;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    service.getRefresh = vi.fn(async (id, signal) => { await gate; return getRefresh(id, signal); });
+    const read = vi.spyOn(service, 'markRead');
+    render(<App service={service} />);
+    const opener = await screen.findByRole('button', { name: '查看 实现项目折叠列表与会话卡片' });
+    await user.click(opener);
+    await waitFor(() => expect(service.getRefresh).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: '关闭详情' }));
+    await act(async () => { release(); });
+    expect(read).not.toHaveBeenCalled();
+    expect(opener).toHaveFocus();
   });
 
   it('renders source content as text, never executable HTML', async () => {

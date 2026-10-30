@@ -1,0 +1,12 @@
+{
+  "name": "agents-board",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node scripts/board.mjs",
+    "build": "node scripts/build.mjs",
+    "test:launcher": "node --test scripts/board.test.mjs"
+  }
+}

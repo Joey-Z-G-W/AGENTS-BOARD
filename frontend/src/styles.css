@@ -43,6 +43,16 @@ h1, h2, h3, p { margin: 0; }
 .nav-counter { margin-left: auto; background: #d6e7da; border-radius: 5px; padding: 2px 6px; font-size: 11px; }
 .nav-host-count { margin-left: auto; color: #9aa49d; font-size: 11px; }
 .sidebar-sources { margin-top: 30px; }
+.source-button { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; border-radius: 8px; padding: 11px 12px; background: transparent; color: #6e7c74; text-align: left; cursor: pointer; }
+.source-button[aria-pressed="true"] { background: #e5eee8; color: #244d38; }
+.source-coverage { margin: 0 0 24px; padding: 18px; border: 1px solid #dce5df; border-radius: 12px; background: #fff; }
+.coverage-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+.coverage-heading label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.source-coverage p { color: #6e7c74; font-size: 12px; line-height: 1.7; margin: 10px 0 0; }
+.coverage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; margin-top: 14px; }
+.coverage-grid button { display: grid; gap: 8px; padding: 12px; text-align: left; border: 1px solid #dce5df; border-radius: 8px; background: #f8faf8; cursor: pointer; }
+.coverage-grid button[aria-pressed="true"] { border-color: #47735a; background: #edf5ee; }
+.coverage-grid span { font-size: 12px; color: #6e7c74; }
 .sidebar-sources > div:not(.nav-label) { display: flex; align-items: center; gap: 12px; padding: 12px; color: #6e7c74; font-size: 12px; }
 .source-logo { width: 16px; font-size: 20px; line-height: 16px; text-align: center; }
 .cursor-logo { font-size: 24px; }
